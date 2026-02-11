@@ -1,0 +1,85 @@
+<?php
+
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Auth\GoogleAuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\RequirementRequestController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', function () {
+    return view('welcome');
+});
+
+// Google OAuth routes
+Route::get('/login', function () {
+    $testUsers = collect();
+    if (app()->environment('local')) {
+        // Exclude super_admin from fake login
+        $testUsers = \App\Models\User::where('role', '!=', 'super_admin')->get();
+    }
+    return view('auth.login', compact('testUsers'));
+})->name('login');
+
+Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('auth.google');
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
+Route::post('/logout', [GoogleAuthController::class, 'logout'])->name('logout');
+
+// Fake login for local development only
+Route::post('/auth/fake-login', function (\Illuminate\Http\Request $request) {
+    if (!app()->environment('local')) {
+        abort(403, 'Fake login only available in local environment');
+    }
+
+    $user = \App\Models\User::find($request->user_id);
+    if ($user) {
+        \Illuminate\Support\Facades\Auth::login($user);
+        return redirect()->intended('/dashboard');
+    }
+
+    return back()->with('error', 'User not found');
+})->name('auth.fake-login');
+
+// Authenticated routes
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // FMO User routes - create requests and view own requests
+    Route::middleware('role:fmo_user,fmo_admin,super_admin')->group(function () {
+        Route::get('/requests/create', [RequirementRequestController::class, 'create'])->name('requests.create');
+        Route::post('/requests', [RequirementRequestController::class, 'store'])->name('requests.store');
+        Route::get('/my-requests/{status?}', [RequirementRequestController::class, 'myRequests'])->name('requests.my');
+        Route::get('/requests/{request}/edit', [RequirementRequestController::class, 'edit'])->name('requests.edit');
+        Route::put('/requests/{request}', [RequirementRequestController::class, 'update'])->name('requests.update');
+    });
+
+    // View request details (all authenticated users)
+    Route::get('/requests/{request}', [RequirementRequestController::class, 'show'])->name('requests.show');
+
+    // FMO Admin routes - approve/reject and view all requests
+    Route::middleware('role:fmo_admin,super_admin')->group(function () {
+        Route::get('/requests', [RequirementRequestController::class, 'index'])->name('requests.index');
+        Route::post('/requests/{request}/approve', [RequirementRequestController::class, 'approve'])->name('requests.approve');
+        Route::post('/requests/{request}/reject', [RequirementRequestController::class, 'reject'])->name('requests.reject');
+    });
+
+    // PO Admin routes - assign
+    Route::middleware('role:po_admin,super_admin')->group(function () {
+        Route::post('/requests/{requirementRequest}/assign', [RequirementRequestController::class, 'assign'])->name('requests.assign');
+    });
+
+    // PO User/Admin routes - mark in progress and complete
+    Route::middleware('role:po_user,po_admin,super_admin')->group(function () {
+        Route::post('/requests/{requirementRequest}/in-progress', [RequirementRequestController::class, 'markInProgress'])->name('requests.in-progress');
+        Route::post('/requests/{requirementRequest}/complete', [RequirementRequestController::class, 'complete'])->name('requests.complete');
+    });
+
+    // Admin routes - user management (accessible by fmo_admin, po_admin, and super_admin)
+    Route::middleware('role:fmo_admin,po_admin,super_admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/users', [UserController::class, 'index'])->name('users.index');
+        Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
+        Route::post('/users', [UserController::class, 'store'])->name('users.store');
+        Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
+        Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.update-role');
+    });
+});
