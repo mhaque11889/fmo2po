@@ -34,7 +34,7 @@ class DashboardController extends Controller
             ->latest()
             ->paginate(10, ['*'], 'approved_page');
 
-        $assignedRequests = RequirementRequest::whereIn('status', ['assigned', 'completed'])
+        $assignedRequests = RequirementRequest::whereIn('status', ['assigned', 'in_progress', 'completed'])
             ->with('creator', 'approver', 'assignee', 'assigner')
             ->latest()
             ->paginate(10, ['*'], 'assigned_page');
@@ -53,7 +53,7 @@ class DashboardController extends Controller
             'total' => RequirementRequest::where('created_by', $userId)->count(),
             'pending' => RequirementRequest::where('created_by', $userId)->where('status', 'pending')->count(),
             'pending_on_po' => RequirementRequest::where('created_by', $userId)->where('status', 'approved')->count(),
-            'assigned' => RequirementRequest::where('created_by', $userId)->where('status', 'assigned')->count(),
+            'assigned' => RequirementRequest::where('created_by', $userId)->whereIn('status', ['assigned', 'in_progress'])->count(),
             'completed' => RequirementRequest::where('created_by', $userId)->where('status', 'completed')->count(),
         ];
 
@@ -80,7 +80,8 @@ class DashboardController extends Controller
                 ->count(),
             'pending' => RequirementRequest::where('status', 'pending')->count(),
             'pending_on_po' => RequirementRequest::where('status', 'approved')->count(),
-            'po_in_progress' => RequirementRequest::where('status', 'assigned')->count(),
+            'po_in_progress' => RequirementRequest::whereIn('status', ['assigned', 'in_progress'])->count(),
+            'completed' => RequirementRequest::where('status', 'completed')->count(),
         ];
 
         return view('dashboard.fmo-admin', compact('pendingRequests', 'stats'));
@@ -93,23 +94,39 @@ class DashboardController extends Controller
             ->latest()
             ->paginate(10, ['*'], 'approved_page');
 
-        $assignedRequests = RequirementRequest::whereIn('status', ['assigned', 'completed'])
-            ->with('creator', 'approver', 'assignee', 'assigner')
-            ->latest()
-            ->paginate(10, ['*'], 'assigned_page');
-
         $poUsers = User::where('role', 'po_user')->get();
 
-        return view('dashboard.po-admin', compact('approvedRequests', 'assignedRequests', 'poUsers'));
+        // Stats for cards
+        $stats = [
+            'ready_to_assign' => RequirementRequest::where('status', 'approved')->count(),
+            'assigned' => RequirementRequest::where('status', 'assigned')->count(),
+            'in_progress' => RequirementRequest::where('status', 'in_progress')->count(),
+            'completed' => RequirementRequest::where('status', 'completed')->count(),
+        ];
+
+        return view('dashboard.po-admin', compact('approvedRequests', 'poUsers', 'stats'));
     }
 
     private function poUserDashboard()
     {
-        $assignedRequests = RequirementRequest::where('assigned_to', auth()->id())
+        $userId = auth()->id();
+
+        // Stats for the user's assigned requests (only assigned and in_progress)
+        $stats = [
+            'total' => RequirementRequest::where('assigned_to', $userId)
+                ->whereIn('status', ['assigned', 'in_progress'])->count(),
+            'assigned' => RequirementRequest::where('assigned_to', $userId)->where('status', 'assigned')->count(),
+            'in_progress' => RequirementRequest::where('assigned_to', $userId)->where('status', 'in_progress')->count(),
+        ];
+
+        // Only show assigned and in_progress requests
+        $assignedRequests = RequirementRequest::where('assigned_to', $userId)
+            ->whereIn('status', ['assigned', 'in_progress'])
             ->with('creator', 'approver', 'assigner')
             ->latest()
-            ->paginate(10);
+            ->limit(10)
+            ->get();
 
-        return view('dashboard.po-user', compact('assignedRequests'));
+        return view('dashboard.po-user', compact('assignedRequests', 'stats'));
     }
 }

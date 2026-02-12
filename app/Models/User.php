@@ -24,6 +24,7 @@ class User extends Authenticatable
         'google_id',
         'avatar',
         'role',
+        'settings',
     ];
 
     /**
@@ -46,7 +47,52 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'settings' => 'array',
         ];
+    }
+
+    /**
+     * Default settings for users
+     */
+    public static function defaultSettings(): array
+    {
+        return [
+            'refresh_interval' => 60, // seconds (0 = disabled)
+            'notification_sound' => 'chime', // chime, bell, ping, none
+            'notify_on_new_request' => true,
+            'notify_on_status_change' => true,
+            'notify_on_task_assigned' => true,
+        ];
+    }
+
+    /**
+     * Get a specific setting with fallback to default
+     */
+    public function getSetting(string $key, $default = null)
+    {
+        $defaults = self::defaultSettings();
+        $settings = $this->settings ?? [];
+
+        return $settings[$key] ?? $defaults[$key] ?? $default;
+    }
+
+    /**
+     * Get all settings merged with defaults
+     */
+    public function getAllSettings(): array
+    {
+        return array_merge(self::defaultSettings(), $this->settings ?? []);
+    }
+
+    /**
+     * Update a specific setting
+     */
+    public function updateSetting(string $key, $value): void
+    {
+        $settings = $this->settings ?? [];
+        $settings[$key] = $value;
+        $this->settings = $settings;
+        $this->save();
     }
 
     public function createdRequests()

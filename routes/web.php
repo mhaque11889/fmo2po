@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\RequirementRequestController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -43,6 +46,11 @@ Route::post('/auth/fake-login', function (\Illuminate\Http\Request $request) {
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    // User settings routes
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+    Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
+    Route::get('/api/task-counts', [SettingsController::class, 'getTaskCounts'])->name('api.task-counts');
+
     // FMO User routes - create requests and view own requests
     Route::middleware('role:fmo_user,fmo_admin,super_admin')->group(function () {
         Route::get('/requests/create', [RequirementRequestController::class, 'create'])->name('requests.create');
@@ -54,6 +62,9 @@ Route::middleware('auth')->group(function () {
 
     // View request details (all authenticated users)
     Route::get('/requests/{request}', [RequirementRequestController::class, 'show'])->name('requests.show');
+
+    // Secure attachment access (all authenticated users)
+    Route::get('/attachments/{attachment}', [AttachmentController::class, 'show'])->name('attachments.show');
 
     // FMO Admin routes - approve/reject and view all requests
     Route::middleware('role:fmo_admin,super_admin')->group(function () {
@@ -67,8 +78,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/requests/{requirementRequest}/assign', [RequirementRequestController::class, 'assign'])->name('requests.assign');
     });
 
-    // PO User/Admin routes - mark in progress and complete
+    // PO User/Admin routes - view assigned requests, mark in progress and complete
     Route::middleware('role:po_user,po_admin,super_admin')->group(function () {
+        Route::get('/my-assigned/{status?}', [RequirementRequestController::class, 'myAssignedRequests'])->name('requests.my-assigned');
         Route::post('/requests/{requirementRequest}/in-progress', [RequirementRequestController::class, 'markInProgress'])->name('requests.in-progress');
         Route::post('/requests/{requirementRequest}/complete', [RequirementRequestController::class, 'complete'])->name('requests.complete');
     });
@@ -81,5 +93,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.update-role');
+    });
+
+    // Reports routes (accessible by fmo_admin and po_admin)
+    Route::middleware('role:fmo_admin,po_admin,super_admin')->group(function () {
+        Route::get('/reports', [ReportsController::class, 'index'])->name('reports.index');
+        Route::get('/reports/export', [ReportsController::class, 'export'])->name('reports.export');
     });
 });

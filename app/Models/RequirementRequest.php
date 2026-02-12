@@ -59,6 +59,11 @@ class RequirementRequest extends Model
         return $this->hasMany(RequestHistory::class)->orderBy('created_at', 'desc');
     }
 
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(RequestAttachment::class);
+    }
+
     public function isPending(): bool
     {
         return $this->status === 'pending';

@@ -1,59 +1,160 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# FMO2PO - Facilities Management Office to Purchase Office
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel-based workflow management system for handling requirement requests between the Facilities Management Office (FMO) and Purchase Office (PO).
 
-## About Laravel
+## Features
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Role-Based Access Control** - Five user roles with specific permissions:
+  - `super_admin` - Full system access
+  - `fmo_admin` - Approve/reject FMO requests, manage FMO users
+  - `fmo_user` - Create and track requirement requests
+  - `po_admin` - Assign requests to PO users, manage PO users
+  - `po_user` - Process assigned requests
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Request Workflow**
+  - FMO User creates request → FMO Admin approves → PO Admin assigns → PO User completes
+  - Status flow: `pending` → `approved`/`rejected` → `assigned` → `in_progress` → `completed`
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **File Attachments** - Secure file uploads (PDF, images) with authenticated access
 
-## Learning Laravel
+- **Reports** - Filter requests by status, date range, and export to CSV/Excel
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- **Dashboard Auto-Refresh** - Configurable refresh intervals with notification sounds
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- **Google OAuth Authentication** - Only pre-registered users can log in
 
-## Laravel Sponsors
+## Requirements
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+- PHP 8.2+
+- Composer
+- MySQL / PostgreSQL / SQLite
+- Node.js & NPM (for development)
 
-### Premium Partners
+## Installation
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd fmo2po
+   ```
 
-## Contributing
+2. **Install dependencies**
+   ```bash
+   composer install
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+3. **Environment setup**
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
 
-## Code of Conduct
+4. **Configure database** in `.env`
+   ```
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=fmo2po
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+5. **Configure Google OAuth** in `.env`
+   ```
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
+   ```
 
-## Security Vulnerabilities
+6. **Run migrations**
+   ```bash
+   php artisan migrate
+   ```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+7. **Seed initial users** (update `database/seeders/UserSeeder.php` with real emails first)
+   ```bash
+   php artisan db:seed
+   ```
+
+8. **Start the server**
+   ```bash
+   php artisan serve
+   ```
+
+## User Management
+
+### Authentication Flow
+1. Admin adds user with email and role via admin panel or database seeder
+2. User signs in with Google using their registered email
+3. If email exists in database, user is logged in with their assigned role
+4. If email not found, access is denied
+
+### Adding Users
+- **Via Admin Panel**: Navigate to Admin → Users → Add New User
+- **Via Seeder**: Update `database/seeders/UserSeeder.php` with user details
+
+Example seeder entry:
+```php
+User::create([
+    'name' => 'John Doe',
+    'email' => 'john.doe@company.com',
+    'role' => 'fmo_user',
+]);
+```
+
+## User Roles & Permissions
+
+| Role | Can Create Requests | Can Approve | Can Assign | Can Process | Can View Reports |
+|------|---------------------|-------------|------------|-------------|------------------|
+| super_admin | Yes | Yes | Yes | Yes | Yes |
+| fmo_admin | Yes | Yes | No | No | Yes |
+| fmo_user | Yes | No | No | No | No |
+| po_admin | No | No | Yes | Yes | Yes |
+| po_user | No | No | No | Yes | No |
+
+## Directory Structure
+
+```
+app/
+├── Http/Controllers/
+│   ├── Admin/UserController.php    # User management
+│   ├── AttachmentController.php    # Secure file access
+│   ├── DashboardController.php     # Role-based dashboards
+│   ├── ReportsController.php       # Reports & exports
+│   ├── RequirementRequestController.php  # Request CRUD & workflow
+│   └── SettingsController.php      # User settings
+├── Models/
+│   ├── User.php
+│   ├── RequirementRequest.php
+│   ├── RequestAttachment.php
+│   └── RequestHistory.php
+```
+
+## Configuration
+
+### Dashboard Auto-Refresh
+Users can configure refresh settings via Settings menu:
+- Refresh interval (30s, 1min, 2min, 5min, or disabled)
+- Notification sounds (chime, bell, ping, or none)
+- Notification triggers (new request, status change, task assigned)
+
+### File Storage
+Attachments are stored in `storage/app/attachments/` (private directory). Access requires authentication and proper authorization.
+
+## Development
+
+### Local Testing
+In local environment, a "fake login" feature allows testing different roles without Google OAuth:
+```bash
+php artisan db:seed
+```
+Then use the role buttons on the login page.
+
+### Running Tests
+```bash
+php artisan test
+```
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is proprietary software.

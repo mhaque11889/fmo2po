@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\RequestAttachment;
 use App\Models\RequirementRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class RequirementRequestController extends Controller
 {
@@ -46,6 +49,32 @@ class RequirementRequestController extends Controller
         return view('requests.my-requests', compact('requests', 'title', 'status'));
     }
 
+    public function myAssignedRequests(?string $status = null)
+    {
+        $query = RequirementRequest::where('assigned_to', auth()->id());
+
+        $title = 'All My Assigned Requests';
+
+        if ($status) {
+            $validStatuses = ['assigned', 'in_progress', 'completed'];
+            if (in_array($status, $validStatuses)) {
+                $query->where('status', $status);
+                $statusTitles = [
+                    'assigned' => 'Assigned Requests',
+                    'in_progress' => 'In Progress Requests',
+                    'completed' => 'Completed Requests',
+                ];
+                $title = $statusTitles[$status] ?? ucfirst($status) . ' Requests';
+            }
+        }
+
+        $requests = $query->with(['creator', 'approver', 'assignee', 'assigner'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(15);
+
+        return view('requests.my-assigned', compact('requests', 'title', 'status'));
+    }
+
     public function create()
     {
         return view('requests.create');
@@ -59,11 +88,22 @@ class RequirementRequestController extends Controller
             'qty' => 'required|integer|min:1',
             'location' => 'required|string|max:255',
             'remarks' => 'nullable|string',
+            'attachments' => 'nullable|array|max:2',
+            'attachments.*' => 'file|mimes:pdf,jpg,jpeg,png,gif|max:5120', // 5MB max
         ]);
 
         $validated['created_by'] = auth()->id();
 
+        // Remove attachments from validated data before creating request
+        $attachmentFiles = $request->file('attachments', []);
+        unset($validated['attachments']);
+
         $requirementRequest = RequirementRequest::create($validated);
+
+        // Handle file attachments
+        if (!empty($attachmentFiles)) {
+            $this->storeAttachments($requirementRequest, $attachmentFiles);
+        }
 
         // Log creation in history
         RequirementRequest::logHistory(
@@ -76,10 +116,75 @@ class RequirementRequestController extends Controller
             ->with('success', 'Request submitted successfully.');
     }
 
+    /**
+     * Store uploaded attachments for a request.
+     */
+    private function storeAttachments(RequirementRequest $requirementRequest, array $files): void
+    {
+        foreach ($files as $file) {
+            $originalFilename = $file->getClientOriginalName();
+            $extension = $file->getClientOriginalExtension();
+            $mimeType = $file->getMimeType();
+            $fileSize = $file->getSize();
+
+            // Generate UUID-based filename for security
+            $storedFilename = Str::uuid() . '.' . $extension;
+
+            // Determine file type
+            $fileType = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif']) ? 'image' : 'pdf';
+
+            // Store file in private directory
+            $filePath = 'attachments/' . $requirementRequest->id . '/' . $storedFilename;
+            Storage::disk('local')->put($filePath, file_get_contents($file));
+
+            // Create attachment record
+            RequestAttachment::create([
+                'requirement_request_id' => $requirementRequest->id,
+                'original_filename' => $originalFilename,
+                'stored_filename' => $storedFilename,
+                'file_path' => $filePath,
+                'file_type' => $fileType,
+                'mime_type' => $mimeType,
+                'file_size' => $fileSize,
+                'uploaded_by' => auth()->id(),
+            ]);
+        }
+    }
+
     public function show(RequirementRequest $request)
     {
-        $request->load('creator', 'approver', 'assignee', 'assigner', 'history.user');
-        return view('requests.show', compact('request'));
+        $user = auth()->user();
+
+        // Authorization checks based on role
+        $canView = false;
+
+        if ($user->isSuperAdmin() || $user->isFmoAdmin()) {
+            // Super Admin and FMO Admin can view all requests
+            $canView = true;
+        } elseif ($user->isPoAdmin()) {
+            // PO Admin can only view approved, assigned, in_progress, or completed requests
+            $canView = in_array($request->status, ['approved', 'assigned', 'in_progress', 'completed']);
+        } elseif ($user->isFmoUser()) {
+            // FMO users can only view requests they created
+            $canView = $request->created_by === $user->id;
+        } elseif ($user->isPoUser()) {
+            // PO users can only view requests assigned to them
+            $canView = $request->assigned_to === $user->id;
+        }
+
+        if (!$canView) {
+            abort(403, 'You are not authorized to view this request.');
+        }
+
+        $request->load('creator', 'approver', 'assignee', 'assigner', 'history.user', 'attachments');
+
+        // Get PO users for assignment dropdown (if user is PO Admin or Super Admin)
+        $poUsers = collect();
+        if ($user->isPoAdmin() || $user->isSuperAdmin()) {
+            $poUsers = User::where('role', 'po_user')->get();
+        }
+
+        return view('requests.show', compact('request', 'poUsers'));
     }
 
     public function edit(RequirementRequest $request)

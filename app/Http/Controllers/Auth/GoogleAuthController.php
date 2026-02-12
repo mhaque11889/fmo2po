@@ -16,16 +16,27 @@ class GoogleAuthController extends Controller
 
     public function callback()
     {
-        $googleUser = Socialite::driver('google')->user();
+        try {
+            $googleUser = Socialite::driver('google')->user();
+        } catch (\Exception $e) {
+            return redirect()->route('login')
+                ->with('error', 'Unable to authenticate with Google. Please try again.');
+        }
 
-        $user = User::updateOrCreate(
-            ['google_id' => $googleUser->id],
-            [
-                'name' => $googleUser->name,
-                'email' => $googleUser->email,
-                'avatar' => $googleUser->avatar,
-            ]
-        );
+        // Check if user with this email exists in our database
+        $user = User::where('email', $googleUser->email)->first();
+
+        if (!$user) {
+            return redirect()->route('login')
+                ->with('error', 'Access denied. Your email is not registered in the system. Please contact an administrator.');
+        }
+
+        // Update Google-specific fields (first time or if changed)
+        $user->update([
+            'google_id' => $googleUser->id,
+            'avatar' => $googleUser->avatar,
+            'name' => $googleUser->name, // Keep name in sync with Google
+        ]);
 
         Auth::login($user);
 
