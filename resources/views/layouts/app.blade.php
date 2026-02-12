@@ -104,6 +104,9 @@
     </nav>
 
     <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Flash message container for sessionStorage messages -->
+        <div id="js-flash-success" class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded hidden"></div>
+
         @if(session('success'))
             <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
                 {{ session('success') }}
@@ -243,6 +246,17 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            // Check for sessionStorage flash messages (from AJAX submissions)
+            const flashSuccess = sessionStorage.getItem('flash_success');
+            if (flashSuccess) {
+                const flashContainer = document.getElementById('js-flash-success');
+                if (flashContainer) {
+                    flashContainer.textContent = flashSuccess;
+                    flashContainer.classList.remove('hidden');
+                }
+                sessionStorage.removeItem('flash_success');
+            }
+
             // Initial count fetch
             checkForChanges();
 

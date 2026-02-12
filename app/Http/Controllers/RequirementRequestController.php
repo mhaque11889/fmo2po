@@ -27,7 +27,7 @@ class RequirementRequestController extends Controller
         $title = 'All My Requests';
 
         if ($status) {
-            $validStatuses = ['pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected'];
+            $validStatuses = ['pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled'];
             if (in_array($status, $validStatuses)) {
                 $query->where('status', $status);
                 $statusTitles = [
@@ -37,6 +37,7 @@ class RequirementRequestController extends Controller
                     'in_progress' => 'In Progress',
                     'completed' => 'Completed',
                     'rejected' => 'Rejected',
+                    'cancelled' => 'Cancelled',
                 ];
                 $title = $statusTitles[$status] ?? ucfirst($status) . ' Requests';
             }
@@ -82,38 +83,78 @@ class RequirementRequestController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'item' => 'required|string|max:255',
-            'dimensions' => 'nullable|string|max:255',
-            'qty' => 'required|integer|min:1',
-            'location' => 'required|string|max:255',
-            'remarks' => 'nullable|string',
-            'attachments' => 'nullable|array|max:2',
-            'attachments.*' => 'file|mimes:pdf,jpg,jpeg,png,gif|max:5120', // 5MB max
-        ]);
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
 
-        $validated['created_by'] = auth()->id();
+        try {
+            $rules = [
+                'item' => 'required|string|max:255',
+                'dimensions' => 'nullable|string|max:255',
+                'qty' => 'required|integer|min:1',
+                'location' => 'required|string|max:255',
+                'remarks' => 'nullable|string',
+                'attachments' => 'nullable|array|max:2',
+                'attachments.*' => 'file|mimes:pdf,jpg,jpeg,png,gif|max:5120', // 5MB max
+            ];
 
-        // Remove attachments from validated data before creating request
-        $attachmentFiles = $request->file('attachments', []);
-        unset($validated['attachments']);
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), $rules);
 
-        $requirementRequest = RequirementRequest::create($validated);
+            if ($validator->fails()) {
+                if ($isAjax) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => $validator->errors()
+                    ], 422);
+                }
+                return redirect()->back()->withErrors($validator)->withInput();
+            }
 
-        // Handle file attachments
-        if (!empty($attachmentFiles)) {
-            $this->storeAttachments($requirementRequest, $attachmentFiles);
+            $validated = $validator->validated();
+
+            $validated['created_by'] = auth()->id();
+
+            // Remove attachments from validated data before creating request
+            $attachmentFiles = $request->file('attachments', []);
+            unset($validated['attachments']);
+
+            $requirementRequest = RequirementRequest::create($validated);
+
+            // Handle file attachments
+            if (!empty($attachmentFiles)) {
+                $this->storeAttachments($requirementRequest, $attachmentFiles);
+            }
+
+            // Log creation in history
+            RequirementRequest::logHistory(
+                $requirementRequest->id,
+                auth()->id(),
+                'created'
+            );
+
+            // Check if AJAX request
+            if ($isAjax) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Request submitted successfully.',
+                    'redirect' => route('dashboard')
+                ]);
+            }
+
+            // Fallback for non-JS
+            return redirect()->route('dashboard')
+                ->with('success', 'Request submitted successfully.');
+
+        } catch (\Exception $e) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An error occurred while submitting your request.'
+                ], 500);
+            }
+
+            return redirect()->back()
+                ->with('error', 'An error occurred while submitting your request.')
+                ->withInput();
         }
-
-        // Log creation in history
-        RequirementRequest::logHistory(
-            $requirementRequest->id,
-            auth()->id(),
-            'created'
-        );
-
-        return redirect()->route('dashboard')
-            ->with('success', 'Request submitted successfully.');
     }
 
     /**
@@ -265,7 +306,7 @@ class RequirementRequestController extends Controller
             ->with('success', 'Request updated successfully.');
     }
 
-    public function approve(RequirementRequest $request)
+    public function approve(RequirementRequest $request, Request $httpRequest)
     {
         if (!auth()->user()->isFmoAdmin() && !auth()->user()->isSuperAdmin()) {
             abort(403);
@@ -283,10 +324,20 @@ class RequirementRequestController extends Controller
             'approved'
         );
 
+        $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request approved successfully.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
         return back()->with('success', 'Request approved successfully.');
     }
 
-    public function reject(RequirementRequest $request)
+    public function reject(RequirementRequest $request, Request $httpRequest)
     {
         if (!auth()->user()->isFmoAdmin() && !auth()->user()->isSuperAdmin()) {
             abort(403);
@@ -304,6 +355,16 @@ class RequirementRequestController extends Controller
             'rejected'
         );
 
+        $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request rejected.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
         return back()->with('success', 'Request rejected.');
     }
 
@@ -313,6 +374,8 @@ class RequirementRequestController extends Controller
             abort(403);
         }
 
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+
         $validated = $request->validate([
             'assigned_to' => 'required|exists:users,id',
         ]);
@@ -321,6 +384,12 @@ class RequirementRequestController extends Controller
 
         // Allow assignment to PO users OR to PO admin themselves
         if (!$assignee->isPoUser() && !$assignee->isPoAdmin()) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Can only assign to Purchase Office users or admins.'
+                ], 422);
+            }
             return back()->with('error', 'Can only assign to Purchase Office users or admins.');
         }
 
@@ -337,6 +406,15 @@ class RequirementRequestController extends Controller
             'assigned',
             ['assigned_to' => ['old' => null, 'new' => $assignee->name]]
         );
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request assigned successfully.',
+                'assignee_name' => $assignee->name,
+                'redirect' => route('dashboard')
+            ]);
+        }
 
         return back()->with('success', 'Request assigned successfully.');
     }
@@ -408,5 +486,95 @@ class RequirementRequestController extends Controller
         );
 
         return back()->with('success', 'Request marked as completed.');
+    }
+
+    public function cancel(Request $request, RequirementRequest $requirementRequest)
+    {
+        $user = auth()->user();
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+
+        // Only creator can cancel their own pending requests
+        if ($requirementRequest->created_by !== $user->id) {
+            abort(403, 'You can only cancel your own requests.');
+        }
+
+        if (!$requirementRequest->isPending()) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only pending requests can be cancelled.'
+                ], 422);
+            }
+            return back()->with('error', 'Only pending requests can be cancelled.');
+        }
+
+        $requirementRequest->update([
+            'status' => 'cancelled',
+        ]);
+
+        RequirementRequest::logHistory(
+            $requirementRequest->id,
+            auth()->id(),
+            'cancelled'
+        );
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request cancelled successfully.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
+        return redirect()->route('dashboard')->with('success', 'Request cancelled successfully.');
+    }
+
+    public function destroy(Request $request, RequirementRequest $requirementRequest)
+    {
+        $user = auth()->user();
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+
+        // Only creator can delete their own rejected requests
+        if ($requirementRequest->created_by !== $user->id) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You can only delete your own requests.'
+                ], 403);
+            }
+            abort(403, 'You can only delete your own requests.');
+        }
+
+        if (!$requirementRequest->isRejected()) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only rejected requests can be deleted.'
+                ], 422);
+            }
+            return back()->with('error', 'Only rejected requests can be deleted.');
+        }
+
+        // Delete attachments first
+        foreach ($requirementRequest->attachments as $attachment) {
+            Storage::disk('local')->delete($attachment->file_path);
+            $attachment->delete();
+        }
+
+        // Delete history
+        $requirementRequest->history()->delete();
+
+        // Delete the request
+        $requirementRequest->delete();
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request deleted successfully.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
+        return redirect()->route('dashboard')->with('success', 'Request deleted successfully.');
     }
 }

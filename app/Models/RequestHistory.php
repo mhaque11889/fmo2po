@@ -41,6 +41,7 @@ class RequestHistory extends Model
             'edited' => 'Request details modified',
             'approved' => 'Request approved',
             'rejected' => 'Request rejected',
+            'cancelled' => 'Request cancelled',
             'assigned' => 'Request assigned',
             'in_progress' => 'Marked as in progress',
             'completed' => 'Marked as completed',

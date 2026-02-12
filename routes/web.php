@@ -58,6 +58,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/my-requests/{status?}', [RequirementRequestController::class, 'myRequests'])->name('requests.my');
         Route::get('/requests/{request}/edit', [RequirementRequestController::class, 'edit'])->name('requests.edit');
         Route::put('/requests/{request}', [RequirementRequestController::class, 'update'])->name('requests.update');
+        Route::post('/requests/{requirementRequest}/cancel', [RequirementRequestController::class, 'cancel'])->name('requests.cancel');
+        Route::delete('/requests/{requirementRequest}', [RequirementRequestController::class, 'destroy'])->name('requests.destroy');
     });
 
     // View request details (all authenticated users)
