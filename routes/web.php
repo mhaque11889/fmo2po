@@ -95,6 +95,15 @@ Route::middleware('auth')->group(function () {
         Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.update-role');
     });
 
+    // Super admin only routes
+    Route::middleware('role:super_admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::delete('/users/delete-all', [UserController::class, 'deleteAllUsers'])->name('users.delete-all');
+        Route::delete('/requests/delete-all', [UserController::class, 'deleteAllRequests'])->name('requests.delete-all');
+        Route::get('/users/import', [UserController::class, 'showImport'])->name('users.import');
+        Route::post('/users/import', [UserController::class, 'import'])->name('users.import.store');
+        Route::get('/users/import/template', [UserController::class, 'downloadTemplate'])->name('users.import.template');
+    });
+
     // Reports routes (accessible by fmo_admin and po_admin)
     Route::middleware('role:fmo_admin,po_admin,super_admin')->group(function () {
         Route::get('/reports', [ReportsController::class, 'index'])->name('reports.index');

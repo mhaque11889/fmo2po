@@ -5,11 +5,44 @@
 @section('content')
 <div class="flex justify-between items-center mb-6">
     <h1 class="text-2xl font-bold text-gray-900">User Management</h1>
-    <a href="{{ route('admin.users.create') }}"
-       class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-        + Add User
-    </a>
+    <div class="flex items-center space-x-3">
+        @if(auth()->user()->isSuperAdmin())
+            <a href="{{ route('admin.users.import') }}"
+               class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                Import CSV
+            </a>
+        @endif
+        <a href="{{ route('admin.users.create') }}"
+           class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+            + Add User
+        </a>
+    </div>
 </div>
+
+@if(auth()->user()->isSuperAdmin())
+<!-- Super Admin Actions -->
+<div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+    <h3 class="text-sm font-medium text-red-800 mb-3">Super Admin Actions</h3>
+    <div class="flex flex-wrap gap-3">
+        <form action="{{ route('admin.users.delete-all') }}" method="POST"
+              onsubmit="return confirm('Are you sure you want to delete ALL users except yourself? This cannot be undone!');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700">
+                Delete All Users
+            </button>
+        </form>
+        <form action="{{ route('admin.requests.delete-all') }}" method="POST"
+              onsubmit="return confirm('Are you sure you want to delete ALL requests and their attachments? This cannot be undone!');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700">
+                Delete All Requests
+            </button>
+        </form>
+    </div>
+</div>
+@endif
 
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200">

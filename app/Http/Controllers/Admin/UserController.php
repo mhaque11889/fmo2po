@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\RequirementRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -115,5 +118,176 @@ class UserController extends Controller
         $user->update($validated);
 
         return redirect()->route('admin.users.index')->with('success', 'User updated successfully.');
+    }
+
+    /**
+     * Delete all users except the current super admin.
+     * Super admin only.
+     */
+    public function deleteAllUsers()
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $currentUserId = auth()->id();
+
+        // Delete all users except current super admin
+        $deleted = User::where('id', '!=', $currentUserId)->delete();
+
+        return back()->with('success', "Deleted {$deleted} users.");
+    }
+
+    /**
+     * Delete all requirement requests and related data.
+     * Super admin only.
+     */
+    public function deleteAllRequests()
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        DB::transaction(function () {
+            // Delete attachments from storage
+            $attachmentPaths = DB::table('request_attachments')->pluck('file_path');
+            foreach ($attachmentPaths as $path) {
+                Storage::disk('local')->delete($path);
+            }
+
+            // Delete related records (cascades should handle this, but being explicit)
+            DB::table('request_attachments')->delete();
+            DB::table('request_history')->delete();
+            RequirementRequest::query()->delete();
+        });
+
+        return back()->with('success', 'All requests and related data have been deleted.');
+    }
+
+    /**
+     * Show CSV import form.
+     * Super admin only.
+     */
+    public function showImport()
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        return view('admin.users.import');
+    }
+
+    /**
+     * Import users from CSV file.
+     * CSV format: firstname,lastname,email,role
+     * Super admin only.
+     */
+    public function import(Request $request)
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:2048',
+        ]);
+
+        $file = $request->file('csv_file');
+        $handle = fopen($file->getPathname(), 'r');
+
+        if (!$handle) {
+            return back()->with('error', 'Could not open the file.');
+        }
+
+        $validRoles = ['super_admin', 'fmo_admin', 'fmo_user', 'po_admin', 'po_user'];
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+        $lineNumber = 0;
+
+        // Skip header row
+        $header = fgetcsv($handle);
+        $lineNumber++;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $lineNumber++;
+
+            // Validate row has enough columns
+            if (count($row) < 4) {
+                $errors[] = "Line {$lineNumber}: Invalid format (expected 4 columns)";
+                $skipped++;
+                continue;
+            }
+
+            [$firstname, $lastname, $email, $role] = array_map('trim', $row);
+
+            // Validate email
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "Line {$lineNumber}: Invalid email '{$email}'";
+                $skipped++;
+                continue;
+            }
+
+            // Validate role
+            if (!in_array($role, $validRoles)) {
+                $errors[] = "Line {$lineNumber}: Invalid role '{$role}'";
+                $skipped++;
+                continue;
+            }
+
+            // Check if user already exists
+            if (User::where('email', $email)->exists()) {
+                $errors[] = "Line {$lineNumber}: Email '{$email}' already exists";
+                $skipped++;
+                continue;
+            }
+
+            // Create user
+            User::create([
+                'name' => trim("{$firstname} {$lastname}"),
+                'email' => $email,
+                'role' => $role,
+            ]);
+
+            $imported++;
+        }
+
+        fclose($handle);
+
+        $message = "Imported {$imported} users.";
+        if ($skipped > 0) {
+            $message .= " Skipped {$skipped} rows.";
+        }
+
+        if (!empty($errors)) {
+            return back()
+                ->with('success', $message)
+                ->with('import_errors', array_slice($errors, 0, 10)); // Show first 10 errors
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Download sample CSV template.
+     */
+    public function downloadTemplate()
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="users_import_template.csv"',
+        ];
+
+        $content = "firstname,lastname,email,role\n";
+        $content .= "John,Doe,john.doe@example.com,fmo_user\n";
+        $content .= "Jane,Smith,jane.smith@example.com,fmo_admin\n";
+        $content .= "Bob,Wilson,bob.wilson@example.com,po_admin\n";
+        $content .= "Alice,Brown,alice.brown@example.com,po_user\n";
+
+        return response($content, 200, $headers);
     }
 }
