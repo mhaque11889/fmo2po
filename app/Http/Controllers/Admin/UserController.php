@@ -89,7 +89,11 @@ class UserController extends Controller
             'role' => 'required|in:' . implode(',', $allowedRoles),
         ]);
 
-        User::create($validated);
+        $user = new User();
+        $user->name  = $validated['name'];
+        $user->email = $validated['email'];
+        $user->role  = $validated['role'];
+        $user->save();
 
         return redirect()->route('admin.users.index')->with('success', 'User created successfully.');
     }
@@ -123,7 +127,10 @@ class UserController extends Controller
             'role' => 'required|in:' . implode(',', $allowedRoles),
         ]);
 
-        $user->update($validated);
+        $user->name  = $validated['name'];
+        $user->email = $validated['email'];
+        $user->role  = $validated['role'];
+        $user->save();
 
         return redirect()->route('admin.users.index')->with('success', 'User updated successfully.');
     }

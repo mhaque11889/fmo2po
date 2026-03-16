@@ -34,8 +34,8 @@ class SendRequestEmailNotification implements ShouldQueue
     {
         $creator  = $request->creator;
         $assignee = $request->assignee;
-        $fmoAdmins = User::where('role', 'fmo_admin')->get();
-        $poAdmins  = User::where('role', 'po_admin')->get();
+        $fmoAdmins = User::where('role', 'fmo_admin')->where('is_active', true)->whereNotNull('email')->get();
+        $poAdmins  = User::where('role', 'po_admin')->where('is_active', true)->whereNotNull('email')->get();
 
         return match(true) {
             $event instanceof RequestSubmitted            => $this->forAll($fmoAdmins, 'new_request'),

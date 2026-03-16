@@ -54,37 +54,48 @@ class SettingsController extends Controller
         $counts = [];
 
         if ($user->isFmoUser()) {
+            $raw = \App\Models\RequirementRequest::where('created_by', $user->id)
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
             $counts = [
-                'pending' => \App\Models\RequirementRequest::where('created_by', $user->id)
-                    ->where('status', 'pending')->count(),
-                'approved' => \App\Models\RequirementRequest::where('created_by', $user->id)
-                    ->where('status', 'approved')->count(),
-                'assigned' => \App\Models\RequirementRequest::where('created_by', $user->id)
-                    ->whereIn('status', ['assigned', 'in_progress'])->count(),
-                'completed' => \App\Models\RequirementRequest::where('created_by', $user->id)
-                    ->where('status', 'completed')->count(),
+                'pending'   => $raw['pending'] ?? 0,
+                'approved'  => $raw['approved'] ?? 0,
+                'assigned'  => ($raw['assigned'] ?? 0) + ($raw['in_progress'] ?? 0),
+                'completed' => $raw['completed'] ?? 0,
             ];
         } elseif ($user->isFmoAdmin() || $user->isSuperAdmin()) {
+            $raw = \App\Models\RequirementRequest::selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
             $counts = [
-                'pending' => \App\Models\RequirementRequest::where('status', 'pending')->count(),
-                'approved' => \App\Models\RequirementRequest::where('status', 'approved')->count(),
-                'assigned' => \App\Models\RequirementRequest::whereIn('status', ['assigned', 'in_progress'])->count(),
-                'completed' => \App\Models\RequirementRequest::where('status', 'completed')->count(),
+                'pending'   => $raw['pending'] ?? 0,
+                'approved'  => $raw['approved'] ?? 0,
+                'assigned'  => ($raw['assigned'] ?? 0) + ($raw['in_progress'] ?? 0),
+                'completed' => $raw['completed'] ?? 0,
             ];
         } elseif ($user->isPoAdmin()) {
+            $raw = \App\Models\RequirementRequest::selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
             $counts = [
-                'approved' => \App\Models\RequirementRequest::where('status', 'approved')->count(),
-                'assigned' => \App\Models\RequirementRequest::whereIn('status', ['assigned', 'in_progress'])->count(),
-                'completed' => \App\Models\RequirementRequest::where('status', 'completed')->count(),
+                'approved'  => $raw['approved'] ?? 0,
+                'assigned'  => ($raw['assigned'] ?? 0) + ($raw['in_progress'] ?? 0),
+                'completed' => $raw['completed'] ?? 0,
             ];
         } elseif ($user->isPoUser()) {
+            $raw = \App\Models\RequirementRequest::where('assigned_to', $user->id)
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
             $counts = [
-                'assigned' => \App\Models\RequirementRequest::where('assigned_to', $user->id)
-                    ->where('status', 'assigned')->count(),
-                'in_progress' => \App\Models\RequirementRequest::where('assigned_to', $user->id)
-                    ->where('status', 'in_progress')->count(),
-                'completed' => \App\Models\RequirementRequest::where('assigned_to', $user->id)
-                    ->where('status', 'completed')->count(),
+                'assigned'    => $raw['assigned'] ?? 0,
+                'in_progress' => $raw['in_progress'] ?? 0,
+                'completed'   => $raw['completed'] ?? 0,
             ];
         }
 

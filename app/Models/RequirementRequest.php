@@ -17,20 +17,6 @@ class RequirementRequest extends Model
         'qty',
         'location',
         'remarks',
-        'status',
-        'approved_by',
-        'approved_at',
-        'assigned_to',
-        'assigned_by',
-        'assigned_at',
-        'progress_remarks',
-        'progress_at',
-        'completion_remarks',
-        'completed_at',
-        'completed_seen_at',
-        'clarification_remarks',
-        'clarification_requested_by',
-        'clarification_requested_at',
     ];
 
     protected $casts = [

@@ -14,6 +14,7 @@ use App\Models\RequestAttachment;
 use App\Models\RequirementRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -152,7 +153,9 @@ class RequirementRequestController extends Controller
             return redirect()->route('dashboard')
                 ->with('success', 'Request submitted successfully.');
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            report($e);
+
             if ($isAjax) {
                 return response()->json([
                     'success' => false,
@@ -184,8 +187,7 @@ class RequirementRequestController extends Controller
             $fileType = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif']) ? 'image' : 'pdf';
 
             // Store file in private directory
-            $filePath = 'attachments/' . $requirementRequest->id . '/' . $storedFilename;
-            Storage::disk('local')->put($filePath, file_get_contents($file));
+            $filePath = $file->storeAs('attachments/' . $requirementRequest->id, $storedFilename, 'local');
 
             // Create attachment record
             RequestAttachment::create([
@@ -226,7 +228,7 @@ class RequirementRequestController extends Controller
             abort(403, 'You are not authorized to view this request.');
         }
 
-        $request->load('creator', 'approver', 'assignee', 'assigner', 'clarificationRequester', 'history.user', 'attachments');
+        $request->load('creator', 'approver', 'assignee', 'assigner', 'clarificationRequester', 'history.user', 'attachments', 'nudges.sender', 'nudges.target');
 
         // Get PO users for assignment dropdown (if user is PO Admin or Super Admin)
         $poUsers = collect();
@@ -321,19 +323,20 @@ class RequirementRequestController extends Controller
             abort(403);
         }
 
-        $request->update([
-            'status' => 'approved',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        DB::transaction(function () use ($request) {
+            $updated = RequirementRequest::whereKey($request->id)
+                ->where('status', 'pending')
+                ->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
 
-        RequirementRequest::logHistory(
-            $request->id,
-            auth()->id(),
-            'approved'
-        );
+            abort_unless($updated === 1, 422, 'Only pending requests can be approved.');
 
-        event(new RequestApproved($request));
+            RequirementRequest::logHistory($request->id, auth()->id(), 'approved');
+            event(new RequestApproved($request->fresh()));
+        });
 
         $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
 
@@ -354,19 +357,25 @@ class RequirementRequestController extends Controller
             abort(403);
         }
 
-        $request->update([
-            'status' => 'rejected',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
+        $validated = $httpRequest->validate([
+            'rejection_remarks' => 'nullable|string|max:1000',
         ]);
 
-        RequirementRequest::logHistory(
-            $request->id,
-            auth()->id(),
-            'rejected'
-        );
+        DB::transaction(function () use ($request, $validated) {
+            $updated = RequirementRequest::whereKey($request->id)
+                ->where('status', 'pending')
+                ->update([
+                    'status'             => 'rejected',
+                    'approved_by'        => auth()->id(),
+                    'approved_at'        => now(),
+                    'rejection_remarks'  => $validated['rejection_remarks'] ?? null,
+                ]);
 
-        event(new RequestRejected($request));
+            abort_unless($updated === 1, 422, 'Only pending requests can be rejected.');
+
+            RequirementRequest::logHistory($request->id, auth()->id(), 'rejected');
+            event(new RequestRejected($request->fresh()));
+        });
 
         $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
 
@@ -406,21 +415,26 @@ class RequirementRequestController extends Controller
             return back()->with('error', 'Can only assign to Purchase Office users or admins.');
         }
 
-        $requirementRequest->update([
-            'status' => 'assigned',
-            'assigned_to' => $validated['assigned_to'],
-            'assigned_by' => auth()->id(),
-            'assigned_at' => now(),
-        ]);
+        DB::transaction(function () use ($requirementRequest, $validated, $assignee) {
+            $updated = RequirementRequest::whereKey($requirementRequest->id)
+                ->whereIn('status', ['approved', 'assigned', 'in_progress'])
+                ->update([
+                    'status' => 'assigned',
+                    'assigned_to' => $validated['assigned_to'],
+                    'assigned_by' => auth()->id(),
+                    'assigned_at' => now(),
+                ]);
 
-        RequirementRequest::logHistory(
-            $requirementRequest->id,
-            auth()->id(),
-            'assigned',
-            ['assigned_to' => ['old' => null, 'new' => $assignee->name]]
-        );
+            abort_unless($updated === 1, 422, 'Only approved or in-progress requests can be assigned.');
 
-        event(new RequestAssigned($requirementRequest));
+            RequirementRequest::logHistory(
+                $requirementRequest->id,
+                auth()->id(),
+                'assigned',
+                ['assigned_to' => ['old' => null, 'new' => $assignee->name]]
+            );
+            event(new RequestAssigned($requirementRequest->fresh()));
+        });
 
         if ($isAjax) {
             return response()->json([

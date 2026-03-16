@@ -243,6 +243,24 @@
             </div>
         @endif
 
+        <!-- Rejected Alert -->
+        @if($request->isRejected() && $request->rejection_remarks)
+            <div class="mx-6 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div class="flex">
+                    <svg class="w-5 h-5 text-red-400 mr-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <h4 class="text-sm font-medium text-red-800">Request Rejected</h4>
+                        <p class="mt-1 text-sm text-red-700">{{ $request->approver->name ?? 'Admin' }} rejected this request on {{ $request->approved_at ? $request->approved_at->format('M d, Y \a\t h:i A') : '' }}</p>
+                        <div class="mt-2 p-3 bg-white rounded border border-red-100">
+                            <p class="text-sm text-gray-700">{{ $request->rejection_remarks }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <!-- Request Details -->
         <div class="p-6">
             <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -688,12 +706,10 @@
                             Approve Request
                         </button>
                     </form>
-                    <form id="reject-form" action="{{ route('requests.reject', $request) }}" method="POST">
-                        @csrf
-                        <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition transform hover:scale-105">
-                            Reject Request
-                        </button>
-                    </form>
+                    <button type="button" onclick="document.getElementById('reject-modal').classList.remove('hidden')"
+                        class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition transform hover:scale-105">
+                        Reject Request
+                    </button>
                     <button type="button" onclick="document.getElementById('clarification-modal').classList.remove('hidden')"
                         class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition transform hover:scale-105">
                         Need Clarification
@@ -724,6 +740,37 @@
                                     </button>
                                     <button type="submit" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
                                         Send for Clarification
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reject Modal -->
+            <div id="reject-modal" class="fixed inset-0 z-50 hidden" aria-modal="true">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('reject-modal').classList.add('hidden')"></div>
+                <div class="fixed inset-0 z-10 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Reject Request</h3>
+                            <p class="text-sm text-gray-600 mb-4">Optionally provide a reason for rejection. This will be included in the notification sent to the initiator.</p>
+                            <form id="reject-form" action="{{ route('requests.reject', $request) }}" method="POST">
+                                @csrf
+                                <div class="mb-4">
+                                    <label for="rejection_remarks" class="block text-sm font-medium text-gray-700 mb-1">Reason for rejection</label>
+                                    <textarea name="rejection_remarks" id="rejection_remarks" rows="4"
+                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                                        placeholder="Optional — describe why this request is being rejected."></textarea>
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" onclick="document.getElementById('reject-modal').classList.add('hidden')"
+                                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                                        Confirm Rejection
                                     </button>
                                 </div>
                             </form>
@@ -1148,7 +1195,7 @@
             $user = auth()->user();
             $canSendNudge = ($user->isFmoUser() && $request->created_by === $user->id) || $user->isFmoAdmin() || $user->isSuperAdmin();
             $isAssignedToPo = in_array($request->status, ['assigned', 'in_progress']) && $request->assigned_to;
-            $nudges = $request->nudges->load('sender', 'target');
+            $nudges = $request->nudges;
             $myUnreadNudges = $nudges->filter(fn($n) => $n->target_user_id === $user->id && !$n->isAcknowledged());
         @endphp
 

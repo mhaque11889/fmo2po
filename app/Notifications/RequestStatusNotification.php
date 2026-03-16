@@ -37,7 +37,7 @@ class RequestStatusNotification extends Notification implements ShouldQueue
             'rejected'        => [
                 "Your request was not approved — #{$id}",
                 "Your request \"{$item}\" has been rejected.",
-                $this->request->completion_remarks,
+                $this->request->rejection_remarks,
             ],
             'clarification'   => [
                 "Clarification needed on your request — #{$id}",

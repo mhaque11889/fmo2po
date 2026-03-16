@@ -27,15 +27,18 @@ class ReportsController extends Controller
 
         $requests = $query->latest()->paginate(20)->withQueryString();
 
-        // Get counts for each status
+        $counts = RequirementRequest::selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
         $statusCounts = [
-            'all' => RequirementRequest::count(),
-            'pending' => RequirementRequest::where('status', 'pending')->count(),
-            'approved' => RequirementRequest::where('status', 'approved')->count(),
-            'rejected' => RequirementRequest::where('status', 'rejected')->count(),
-            'assigned' => RequirementRequest::where('status', 'assigned')->count(),
-            'in_progress' => RequirementRequest::where('status', 'in_progress')->count(),
-            'completed' => RequirementRequest::where('status', 'completed')->count(),
+            'all'         => $counts->sum(),
+            'pending'     => $counts['pending'] ?? 0,
+            'approved'    => $counts['approved'] ?? 0,
+            'rejected'    => $counts['rejected'] ?? 0,
+            'assigned'    => $counts['assigned'] ?? 0,
+            'in_progress' => $counts['in_progress'] ?? 0,
+            'completed'   => $counts['completed'] ?? 0,
         ];
 
         return view('reports.index', compact('requests', 'statusCounts'));
@@ -58,16 +61,14 @@ class ReportsController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        $requests = $query->latest()->get();
-
         if ($format === 'excel') {
-            return $this->exportExcel($requests);
+            return $this->exportExcel($query);
         }
 
-        return $this->exportCsv($requests);
+        return $this->exportCsv($query);
     }
 
-    private function exportCsv($requests)
+    private function exportCsv($query)
     {
         $filename = 'fmo2po_reports_' . now()->format('Y-m-d_His') . '.csv';
 
@@ -76,7 +77,7 @@ class ReportsController extends Controller
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ];
 
-        $callback = function () use ($requests) {
+        $callback = function () use ($query) {
             $file = fopen('php://output', 'w');
 
             // Header row
@@ -102,29 +103,33 @@ class ReportsController extends Controller
                 'Completed At',
             ]);
 
-            foreach ($requests as $request) {
-                fputcsv($file, [
-                    $request->id,
-                    $request->item,
-                    $request->description,
-                    $request->dimensions,
-                    $request->qty,
-                    $request->location,
-                    ucfirst(str_replace('_', ' ', $request->status)),
-                    $request->creator->name ?? '',
-                    $request->created_at?->format('Y-m-d H:i:s'),
-                    $request->approver->name ?? '',
-                    $request->approved_at?->format('Y-m-d H:i:s'),
-                    $request->approval_remarks,
-                    $request->assignee->name ?? '',
-                    $request->assigner->name ?? '',
-                    $request->assigned_at?->format('Y-m-d H:i:s'),
-                    $request->progress_remarks,
-                    $request->progress_at?->format('Y-m-d H:i:s'),
-                    $request->completion_remarks,
-                    $request->completed_at?->format('Y-m-d H:i:s'),
-                ]);
-            }
+            $query->with(['creator', 'approver', 'assignee', 'assigner'])
+                ->orderBy('id', 'desc')
+                ->chunkById(1000, function ($rows) use ($file) {
+                    foreach ($rows as $request) {
+                        fputcsv($file, [
+                            $request->id,
+                            $request->item,
+                            $request->description,
+                            $request->dimensions,
+                            $request->qty,
+                            $request->location,
+                            ucfirst(str_replace('_', ' ', $request->status)),
+                            $request->creator->name ?? '',
+                            $request->created_at?->format('Y-m-d H:i:s'),
+                            $request->approver->name ?? '',
+                            $request->approved_at?->format('Y-m-d H:i:s'),
+                            $request->approval_remarks,
+                            $request->assignee->name ?? '',
+                            $request->assigner->name ?? '',
+                            $request->assigned_at?->format('Y-m-d H:i:s'),
+                            $request->progress_remarks,
+                            $request->progress_at?->format('Y-m-d H:i:s'),
+                            $request->completion_remarks,
+                            $request->completed_at?->format('Y-m-d H:i:s'),
+                        ]);
+                    }
+                });
 
             fclose($file);
         };
@@ -132,7 +137,7 @@ class ReportsController extends Controller
         return Response::stream($callback, 200, $headers);
     }
 
-    private function exportExcel($requests)
+    private function exportExcel($query)
     {
         // For Excel, we'll create a simple XML spreadsheet format
         // This avoids requiring additional packages like PHPSpreadsheet
@@ -143,7 +148,7 @@ class ReportsController extends Controller
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ];
 
-        $callback = function () use ($requests) {
+        $callback = function () use ($query) {
             echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">';
             echo '<head><meta charset="UTF-8"></head>';
             echo '<body><table border="1">';
@@ -171,29 +176,33 @@ class ReportsController extends Controller
             echo '<th>Completed At</th>';
             echo '</tr>';
 
-            foreach ($requests as $request) {
-                echo '<tr>';
-                echo '<td>' . htmlspecialchars($request->id) . '</td>';
-                echo '<td>' . htmlspecialchars($request->item) . '</td>';
-                echo '<td>' . htmlspecialchars($request->description ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->dimensions ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->qty) . '</td>';
-                echo '<td>' . htmlspecialchars($request->location) . '</td>';
-                echo '<td>' . htmlspecialchars(ucfirst(str_replace('_', ' ', $request->status))) . '</td>';
-                echo '<td>' . htmlspecialchars($request->creator->name ?? '') . '</td>';
-                echo '<td>' . ($request->created_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->approver->name ?? '') . '</td>';
-                echo '<td>' . ($request->approved_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->approval_remarks ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->assignee->name ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->assigner->name ?? '') . '</td>';
-                echo '<td>' . ($request->assigned_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->progress_remarks ?? '') . '</td>';
-                echo '<td>' . ($request->progress_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                echo '<td>' . htmlspecialchars($request->completion_remarks ?? '') . '</td>';
-                echo '<td>' . ($request->completed_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                echo '</tr>';
-            }
+            $query->with(['creator', 'approver', 'assignee', 'assigner'])
+                ->orderBy('id', 'desc')
+                ->chunkById(1000, function ($rows) {
+                    foreach ($rows as $request) {
+                        echo '<tr>';
+                        echo '<td>' . htmlspecialchars($request->id) . '</td>';
+                        echo '<td>' . htmlspecialchars($request->item) . '</td>';
+                        echo '<td>' . htmlspecialchars($request->description ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->dimensions ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->qty) . '</td>';
+                        echo '<td>' . htmlspecialchars($request->location) . '</td>';
+                        echo '<td>' . htmlspecialchars(ucfirst(str_replace('_', ' ', $request->status))) . '</td>';
+                        echo '<td>' . htmlspecialchars($request->creator->name ?? '') . '</td>';
+                        echo '<td>' . ($request->created_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->approver->name ?? '') . '</td>';
+                        echo '<td>' . ($request->approved_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->approval_remarks ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->assignee->name ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->assigner->name ?? '') . '</td>';
+                        echo '<td>' . ($request->assigned_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->progress_remarks ?? '') . '</td>';
+                        echo '<td>' . ($request->progress_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($request->completion_remarks ?? '') . '</td>';
+                        echo '<td>' . ($request->completed_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '</tr>';
+                    }
+                });
 
             echo '</table></body></html>';
         };

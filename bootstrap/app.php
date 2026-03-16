@@ -11,6 +11,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureActiveUser::class,
+        ]);
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
         ]);

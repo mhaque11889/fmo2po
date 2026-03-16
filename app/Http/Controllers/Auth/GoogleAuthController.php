@@ -38,6 +38,10 @@ class GoogleAuthController extends Controller
             'name' => $googleUser->name, // Keep name in sync with Google
         ]);
 
+        if (!$user->is_active) {
+            return redirect('/')->with('error', 'Your account has been deactivated. Please contact an administrator.');
+        }
+
         Auth::login($user);
 
         return redirect()->intended('/dashboard');

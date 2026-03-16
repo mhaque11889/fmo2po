@@ -40,23 +40,41 @@ class DashboardController extends Controller
             ->latest()
             ->paginate(10, ['*'], 'assigned_page');
 
+        $counts = RequirementRequest::selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $stats = [
+            'pending'     => $counts['pending'] ?? 0,
+            'approved'    => $counts['approved'] ?? 0,
+            'assigned'    => $counts['assigned'] ?? 0,
+            'in_progress' => $counts['in_progress'] ?? 0,
+            'completed'   => $counts['completed'] ?? 0,
+            'rejected'    => $counts['rejected'] ?? 0,
+            'total'       => $counts->sum(),
+        ];
+
         $poUsers = User::where('role', 'po_user')->where('is_active', true)->get();
 
-        return view('dashboard.super-admin', compact('pendingRequests', 'approvedRequests', 'assignedRequests', 'poUsers'));
+        return view('dashboard.super-admin', compact('pendingRequests', 'approvedRequests', 'assignedRequests', 'poUsers', 'stats'));
     }
 
     private function fmoUserDashboard()
     {
         $userId = auth()->id();
 
-        // Stats for the user's requests
+        $counts = RequirementRequest::where('created_by', $userId)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
         $stats = [
-            'total' => RequirementRequest::where('created_by', $userId)->count(),
-            'pending' => RequirementRequest::where('created_by', $userId)->where('status', 'pending')->count(),
-            'clarification_needed' => RequirementRequest::where('created_by', $userId)->where('status', 'clarification_needed')->count(),
-            'pending_on_po' => RequirementRequest::where('created_by', $userId)->where('status', 'approved')->count(),
-            'assigned' => RequirementRequest::where('created_by', $userId)->whereIn('status', ['assigned', 'in_progress'])->count(),
-            'completed' => RequirementRequest::where('created_by', $userId)->where('status', 'completed')->count(),
+            'total'                => $counts->sum(),
+            'pending'              => $counts['pending'] ?? 0,
+            'clarification_needed' => $counts['clarification_needed'] ?? 0,
+            'pending_on_po'        => $counts['approved'] ?? 0,
+            'assigned'             => ($counts['assigned'] ?? 0) + ($counts['in_progress'] ?? 0),
+            'completed'            => $counts['completed'] ?? 0,
         ];
 
         // Last 10 requests
@@ -75,15 +93,18 @@ class DashboardController extends Controller
             ->latest()
             ->paginate(10, ['*'], 'pending_page');
 
-        // Stats for cards
+        $counts = RequirementRequest::selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
         $stats = [
-            'all_mtd' => RequirementRequest::whereMonth('created_at', now()->month)
+            'all_mtd'        => RequirementRequest::whereMonth('created_at', now()->month)
                 ->whereYear('created_at', now()->year)
                 ->count(),
-            'pending' => RequirementRequest::where('status', 'pending')->count(),
-            'pending_on_po' => RequirementRequest::where('status', 'approved')->count(),
-            'po_in_progress' => RequirementRequest::whereIn('status', ['assigned', 'in_progress'])->count(),
-            'completed' => RequirementRequest::where('status', 'completed')->count(),
+            'pending'        => $counts['pending'] ?? 0,
+            'pending_on_po'  => $counts['approved'] ?? 0,
+            'po_in_progress' => ($counts['assigned'] ?? 0) + ($counts['in_progress'] ?? 0),
+            'completed'      => $counts['completed'] ?? 0,
         ];
 
         return view('dashboard.fmo-admin', compact('pendingRequests', 'stats'));
@@ -108,12 +129,15 @@ class DashboardController extends Controller
 
         $poUsers = User::where('role', 'po_user')->where('is_active', true)->get();
 
-        // Stats for cards
+        $counts = RequirementRequest::selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
         $stats = [
-            'ready_to_assign' => RequirementRequest::where('status', 'approved')->count(),
-            'assigned' => RequirementRequest::where('status', 'assigned')->count(),
-            'in_progress' => RequirementRequest::where('status', 'in_progress')->count(),
-            'completed' => RequirementRequest::where('status', 'completed')->count(),
+            'ready_to_assign' => $counts['approved'] ?? 0,
+            'assigned'        => $counts['assigned'] ?? 0,
+            'in_progress'     => $counts['in_progress'] ?? 0,
+            'completed'       => $counts['completed'] ?? 0,
         ];
 
         $unreadNudges = RequestNudge::where('target_user_id', $userId)
@@ -129,12 +153,15 @@ class DashboardController extends Controller
     {
         $userId = auth()->id();
 
-        // Stats for the user's assigned requests (only assigned and in_progress)
+        $counts = RequirementRequest::where('assigned_to', $userId)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
         $stats = [
-            'total' => RequirementRequest::where('assigned_to', $userId)
-                ->whereIn('status', ['assigned', 'in_progress'])->count(),
-            'assigned' => RequirementRequest::where('assigned_to', $userId)->where('status', 'assigned')->count(),
-            'in_progress' => RequirementRequest::where('assigned_to', $userId)->where('status', 'in_progress')->count(),
+            'total'       => ($counts['assigned'] ?? 0) + ($counts['in_progress'] ?? 0),
+            'assigned'    => $counts['assigned'] ?? 0,
+            'in_progress' => $counts['in_progress'] ?? 0,
         ];
 
         // Only show assigned and in_progress requests

@@ -220,8 +220,12 @@ class NudgeController extends Controller
     {
         $user = auth()->user();
 
-        if ($user->isFmoUser() && $requirementRequest->created_by !== $user->id) {
-            abort(403);
+        // FMO Admins and Super Admins have oversight of all requests.
+        // FMO Users may only mark their own requests as seen.
+        if (!$user->isFmoAdmin() && !$user->isSuperAdmin()) {
+            if ($requirementRequest->created_by !== $user->id) {
+                abort(403);
+            }
         }
 
         $requirementRequest->update(['completed_seen_at' => now()]);
