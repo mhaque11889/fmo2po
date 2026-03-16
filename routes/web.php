@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\NudgeController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\RequirementRequestController;
 use App\Http\Controllers\SettingsController;
@@ -13,16 +14,18 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-// Google OAuth routes
+// Redirect login page to home
 Route::get('/login', function () {
-    $testUsers = collect();
     if (app()->environment('local')) {
-        // Exclude super_admin from fake login
-        $testUsers = \App\Models\User::where('role', '!=', 'super_admin')->get();
+        $testUsers = \App\Models\User::whereIn('role', ['fmo_user', 'fmo_admin', 'po_admin', 'po_user', 'super_admin'])
+            ->orderByRaw("CASE role WHEN 'super_admin' THEN 1 WHEN 'fmo_admin' THEN 2 WHEN 'fmo_user' THEN 3 WHEN 'po_admin' THEN 4 WHEN 'po_user' THEN 5 ELSE 6 END")
+            ->get();
+        return view('auth.login', compact('testUsers'));
     }
-    return view('auth.login', compact('testUsers'));
+    return redirect('/');
 })->name('login');
 
+// Google OAuth routes
 Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('auth.google');
 Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
 Route::post('/logout', [GoogleAuthController::class, 'logout'])->name('logout');
@@ -50,6 +53,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::get('/api/task-counts', [SettingsController::class, 'getTaskCounts'])->name('api.task-counts');
+    Route::get('/api/nudge-counts', [NudgeController::class, 'getUnreadCount'])->name('api.nudge-counts');
+
+    // Nudge routes - FMO side sends update requests
+    Route::middleware('role:fmo_user,fmo_admin,super_admin')->group(function () {
+        Route::post('/requests/{requirementRequest}/nudge', [NudgeController::class, 'store'])->name('nudges.store');
+        Route::post('/nudges/{nudge}/mark-reply-seen', [NudgeController::class, 'markReplySeen'])->name('nudges.mark-reply-seen');
+        Route::post('/requests/{requirementRequest}/mark-completed-seen', [NudgeController::class, 'markCompletedSeen'])->name('nudges.mark-completed-seen');
+    });
+
+    // Nudge routes - PO side responds
+    Route::middleware('role:po_user,po_admin,super_admin')->group(function () {
+        Route::post('/nudges/{nudge}/acknowledge', [NudgeController::class, 'acknowledge'])->name('nudges.acknowledge');
+        Route::post('/nudges/{nudge}/reply', [NudgeController::class, 'reply'])->name('nudges.reply');
+    });
 
     // FMO User routes - create requests and view own requests
     Route::middleware('role:fmo_user,fmo_admin,super_admin')->group(function () {
@@ -57,9 +74,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/requests', [RequirementRequestController::class, 'store'])->name('requests.store');
         Route::get('/my-requests/{status?}', [RequirementRequestController::class, 'myRequests'])->name('requests.my');
         Route::get('/requests/{request}/edit', [RequirementRequestController::class, 'edit'])->name('requests.edit');
-        Route::put('/requests/{request}', [RequirementRequestController::class, 'update'])->name('requests.update');
+        Route::put('/requests/{requirementRequest}', [RequirementRequestController::class, 'update'])->name('requests.update');
         Route::post('/requests/{requirementRequest}/cancel', [RequirementRequestController::class, 'cancel'])->name('requests.cancel');
         Route::delete('/requests/{requirementRequest}', [RequirementRequestController::class, 'destroy'])->name('requests.destroy');
+        Route::post('/requests/{requirementRequest}/resubmit', [RequirementRequestController::class, 'resubmit'])->name('requests.resubmit');
     });
 
     // View request details (all authenticated users)
@@ -73,6 +91,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/requests', [RequirementRequestController::class, 'index'])->name('requests.index');
         Route::post('/requests/{request}/approve', [RequirementRequestController::class, 'approve'])->name('requests.approve');
         Route::post('/requests/{request}/reject', [RequirementRequestController::class, 'reject'])->name('requests.reject');
+        Route::post('/requests/{requirementRequest}/clarification', [RequirementRequestController::class, 'requestClarification'])->name('requests.clarification');
     });
 
     // PO Admin routes - assign
@@ -95,10 +114,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.update-role');
+        Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
     });
 
     // Super admin only routes
     Route::middleware('role:super_admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::patch('/users/{user}/activate', [UserController::class, 'activate'])->name('users.activate');
         Route::delete('/users/delete-all', [UserController::class, 'deleteAllUsers'])->name('users.delete-all');
         Route::delete('/requests/delete-all', [UserController::class, 'deleteAllRequests'])->name('requests.delete-all');
         Route::get('/users/import', [UserController::class, 'showImport'])->name('users.import');

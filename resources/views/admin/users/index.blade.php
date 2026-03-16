@@ -23,7 +23,7 @@
 <!-- Super Admin Actions -->
 <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
     <h3 class="text-sm font-medium text-red-800 mb-3">Super Admin Actions</h3>
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap gap-3 mb-4">
         <form action="{{ route('admin.users.delete-all') }}" method="POST"
               onsubmit="return confirm('Are you sure you want to delete ALL users except yourself? This cannot be undone!');">
             @csrf
@@ -41,6 +41,15 @@
             </button>
         </form>
     </div>
+    <div class="flex items-center gap-2">
+        <input type="checkbox" id="show_inactive" name="show_inactive"
+               {{ $showInactive ? 'checked' : '' }}
+               onchange="toggleInactiveUsers()"
+               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+        <label for="show_inactive" class="text-sm text-red-800 font-medium cursor-pointer">
+            Show Deactivated Users
+        </label>
+    </div>
 </div>
 @endif
 
@@ -57,17 +66,22 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
             @foreach($users as $user)
-                <tr>
+                <tr @if(!$user->is_active) class="bg-gray-50 opacity-70" @endif>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="flex items-center">
+                        <div class="flex items-center gap-2">
                             @if($user->avatar)
-                                <img src="{{ $user->avatar }}" alt="Avatar" class="w-8 h-8 rounded-full mr-3">
+                                <img src="{{ $user->avatar }}" alt="Avatar" class="w-8 h-8 rounded-full">
                             @else
-                                <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
+                                <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
                                     <span class="text-gray-500 text-sm">{{ substr($user->name, 0, 1) }}</span>
                                 </div>
                             @endif
                             <span class="text-sm font-medium text-gray-900">{{ $user->name }}</span>
+                            @if(!$user->is_active)
+                                <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-200 px-2 py-1 rounded">
+                                    Inactive
+                                </span>
+                            @endif
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $user->email }}</td>
@@ -83,25 +97,54 @@
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <form action="{{ route('admin.users.update-role', $user) }}" method="POST" class="flex items-center space-x-2">
-                            @csrf
-                            @method('PATCH')
-                            <select name="role" class="text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                                @foreach($allowedRoles as $role)
-                                    <option value="{{ $role }}" {{ $user->role === $role ? 'selected' : '' }}>
-                                        {{ str_replace('_', ' ', strtoupper($role)) }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <button type="submit" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700">
-                                Update
-                            </button>
-                        </form>
+                        @if($user->is_active)
+                            <form action="{{ route('admin.users.update-role', $user) }}" method="POST" class="flex items-center space-x-2">
+                                @csrf
+                                @method('PATCH')
+                                <select name="role" class="text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                    @foreach($allowedRoles as $role)
+                                        <option value="{{ $role }}" {{ $user->role === $role ? 'selected' : '' }}>
+                                            {{ str_replace('_', ' ', strtoupper($role)) }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700">
+                                    Update
+                                </button>
+                            </form>
+                        @else
+                            <span class="text-sm text-gray-400">N/A</span>
+                        @endif
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        <a href="{{ route('admin.users.edit', $user) }}" class="text-indigo-600 hover:text-indigo-900">
-                            Edit
-                        </a>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm flex gap-3">
+                        @if($user->is_active)
+                            <a href="{{ route('admin.users.edit', $user) }}" class="text-indigo-600 hover:text-indigo-900">
+                                Edit
+                            </a>
+                            @if($user->id !== auth()->id())
+                                <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
+                                      onsubmit="return confirm('Are you sure you want to deactivate this user? They will no longer appear in any dropdowns or lists.');"
+                                      style="display: inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="text-red-600 hover:text-red-900 font-medium">
+                                        Deactivate
+                                    </button>
+                                </form>
+                            @endif
+                        @else
+                            @if(auth()->user()->isSuperAdmin())
+                                <form action="{{ route('admin.users.activate', $user) }}" method="POST"
+                                      onsubmit="return confirm('Are you sure you want to reactivate this user?');"
+                                      style="display: inline;">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="text-green-600 hover:text-green-900 font-medium">
+                                        Reactivate
+                                    </button>
+                                </form>
+                            @endif
+                        @endif
                     </td>
                 </tr>
             @endforeach
@@ -112,4 +155,19 @@
 <div class="mt-4">
     {{ $users->links() }}
 </div>
+
+@if(auth()->user()->isSuperAdmin())
+<script>
+function toggleInactiveUsers() {
+    const checkbox = document.getElementById('show_inactive');
+    const url = new URL(window.location);
+    if (checkbox.checked) {
+        url.searchParams.set('show_inactive', '1');
+    } else {
+        url.searchParams.delete('show_inactive');
+    }
+    window.location.href = url.toString();
+}
+</script>
+@endif
 @endsection

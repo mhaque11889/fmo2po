@@ -2,6 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\RequestApproved;
+use App\Events\RequestAssigned;
+use App\Events\RequestClarificationRequested;
+use App\Events\RequestCompleted;
+use App\Events\RequestMarkedInProgress;
+use App\Events\RequestRejected;
+use App\Events\RequestResubmitted;
+use App\Events\RequestSubmitted;
 use App\Models\RequestAttachment;
 use App\Models\RequirementRequest;
 use App\Models\User;
@@ -27,7 +35,7 @@ class RequirementRequestController extends Controller
         $title = 'All My Requests';
 
         if ($status) {
-            $validStatuses = ['pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled'];
+            $validStatuses = ['pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled', 'clarification_needed'];
             if (in_array($status, $validStatuses)) {
                 $query->where('status', $status);
                 $statusTitles = [
@@ -38,6 +46,7 @@ class RequirementRequestController extends Controller
                     'completed' => 'Completed',
                     'rejected' => 'Rejected',
                     'cancelled' => 'Cancelled',
+                    'clarification_needed' => 'Needs Clarification',
                 ];
                 $title = $statusTitles[$status] ?? ucfirst($status) . ' Requests';
             }
@@ -130,7 +139,7 @@ class RequirementRequestController extends Controller
                 'created'
             );
 
-            // Check if AJAX request
+            event(new RequestSubmitted($requirementRequest));
             if ($isAjax) {
                 return response()->json([
                     'success' => true,
@@ -217,12 +226,12 @@ class RequirementRequestController extends Controller
             abort(403, 'You are not authorized to view this request.');
         }
 
-        $request->load('creator', 'approver', 'assignee', 'assigner', 'history.user', 'attachments');
+        $request->load('creator', 'approver', 'assignee', 'assigner', 'clarificationRequester', 'history.user', 'attachments');
 
         // Get PO users for assignment dropdown (if user is PO Admin or Super Admin)
         $poUsers = collect();
         if ($user->isPoAdmin() || $user->isSuperAdmin()) {
-            $poUsers = User::where('role', 'po_user')->get();
+            $poUsers = User::where('role', 'po_user')->where('is_active', true)->get();
         }
 
         return view('requests.show', compact('request', 'poUsers'));
@@ -324,6 +333,8 @@ class RequirementRequestController extends Controller
             'approved'
         );
 
+        event(new RequestApproved($request));
+
         $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
 
         if ($isAjax) {
@@ -354,6 +365,8 @@ class RequirementRequestController extends Controller
             auth()->id(),
             'rejected'
         );
+
+        event(new RequestRejected($request));
 
         $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
 
@@ -407,6 +420,8 @@ class RequirementRequestController extends Controller
             ['assigned_to' => ['old' => null, 'new' => $assignee->name]]
         );
 
+        event(new RequestAssigned($requirementRequest));
+
         if ($isAjax) {
             return response()->json([
                 'success' => true,
@@ -450,6 +465,8 @@ class RequirementRequestController extends Controller
             $validated['progress_remarks'] ?? null
         );
 
+        event(new RequestMarkedInProgress($requirementRequest));
+
         return back()->with('success', 'Request marked as in progress.');
     }
 
@@ -485,6 +502,8 @@ class RequirementRequestController extends Controller
             $validated['completion_remarks'] ?? null
         );
 
+        event(new RequestCompleted($requirementRequest));
+
         return back()->with('success', 'Request marked as completed.');
     }
 
@@ -493,23 +512,26 @@ class RequirementRequestController extends Controller
         $user = auth()->user();
         $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
 
-        // Only creator can cancel their own pending requests
+        // Only creator can cancel their own pending or clarification_needed requests
         if ($requirementRequest->created_by !== $user->id) {
             abort(403, 'You can only cancel your own requests.');
         }
 
-        if (!$requirementRequest->isPending()) {
+        if (!$requirementRequest->isPending() && !$requirementRequest->needsClarification()) {
             if ($isAjax) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only pending requests can be cancelled.'
+                    'message' => 'Only pending or clarification needed requests can be cancelled.'
                 ], 422);
             }
-            return back()->with('error', 'Only pending requests can be cancelled.');
+            return back()->with('error', 'Only pending or clarification needed requests can be cancelled.');
         }
 
         $requirementRequest->update([
             'status' => 'cancelled',
+            'clarification_remarks' => null,
+            'clarification_requested_by' => null,
+            'clarification_requested_at' => null,
         ]);
 
         RequirementRequest::logHistory(
@@ -576,5 +598,127 @@ class RequirementRequestController extends Controller
         }
 
         return redirect()->route('dashboard')->with('success', 'Request deleted successfully.');
+    }
+
+    public function requestClarification(Request $request, RequirementRequest $requirementRequest)
+    {
+        if (!auth()->user()->isFmoAdmin() && !auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+
+        if (!$requirementRequest->isPending()) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only pending requests can be sent for clarification.'
+                ], 422);
+            }
+            return back()->with('error', 'Only pending requests can be sent for clarification.');
+        }
+
+        $validated = $request->validate([
+            'clarification_remarks' => 'required|string|max:1000',
+        ]);
+
+        $requirementRequest->update([
+            'status' => 'clarification_needed',
+            'clarification_remarks' => $validated['clarification_remarks'],
+            'clarification_requested_by' => auth()->id(),
+            'clarification_requested_at' => now(),
+        ]);
+
+        RequirementRequest::logHistory(
+            $requirementRequest->id,
+            auth()->id(),
+            'clarification_requested',
+            null,
+            $validated['clarification_remarks']
+        );
+
+        event(new RequestClarificationRequested($requirementRequest));
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request sent back for clarification.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
+        return back()->with('success', 'Request sent back for clarification.');
+    }
+
+    public function resubmit(Request $request, RequirementRequest $requirementRequest)
+    {
+        $user = auth()->user();
+        $isAjax = $request->ajax() || $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+
+        // Only the creator can resubmit their request
+        if ($requirementRequest->created_by !== $user->id) {
+            abort(403, 'You can only resubmit your own requests.');
+        }
+
+        if (!$requirementRequest->needsClarification()) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only requests needing clarification can be resubmitted.'
+                ], 422);
+            }
+            return back()->with('error', 'Only requests needing clarification can be resubmitted.');
+        }
+
+        $validated = $request->validate([
+            'item' => 'required|string|max:255',
+            'dimensions' => 'nullable|string|max:255',
+            'qty' => 'required|integer|min:1',
+            'location' => 'required|string|max:255',
+            'remarks' => 'nullable|string',
+        ]);
+
+        // Track changes for history
+        $changes = [];
+        $trackFields = ['item', 'dimensions', 'qty', 'location', 'remarks'];
+
+        foreach ($trackFields as $field) {
+            $oldValue = $requirementRequest->{$field};
+            $newValue = $validated[$field] ?? null;
+
+            if ($oldValue != $newValue) {
+                $changes[$field] = [
+                    'old' => $oldValue,
+                    'new' => $newValue,
+                ];
+            }
+        }
+
+        // Update request and change status back to pending
+        $requirementRequest->update(array_merge($validated, [
+            'status' => 'pending',
+            'clarification_remarks' => null,
+            'clarification_requested_by' => null,
+            'clarification_requested_at' => null,
+        ]));
+
+        RequirementRequest::logHistory(
+            $requirementRequest->id,
+            auth()->id(),
+            'resubmitted',
+            !empty($changes) ? $changes : null
+        );
+
+        event(new RequestResubmitted($requirementRequest));
+
+        if ($isAjax) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Request resubmitted successfully.',
+                'redirect' => route('dashboard')
+            ]);
+        }
+
+        return redirect()->route('dashboard')->with('success', 'Request resubmitted successfully.');
     }
 }

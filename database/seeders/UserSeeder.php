@@ -22,32 +22,26 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // Test users for local development
-        // In production, use the admin panel to add users or seed with real emails
+        $users = [
+            ['name' => 'Pushkar Bisht',    'email' => 'pbisht@aes.ac.in',      'role' => 'fmo_user'],
+            ['name' => 'Rajesh Kumar',     'email' => 'rajekumar@aes.ac.in',   'role' => 'fmo_user'],
+            ['name' => 'Swarup',           'email' => 'sdalei@aes.ac.in',      'role' => 'fmo_user'],
+            ['name' => 'Jagat Singh',      'email' => 'jsingh@aes.ac.in',      'role' => 'fmo_user'],
+            ['name' => 'Somiya Gupta',     'email' => 'smgupta@aes.ac.in',     'role' => 'fmo_user'],
+            ['name' => 'Rohit Kumar',      'email' => 'rokumar@aes.ac.in',     'role' => 'fmo_user'],
+            ['name' => 'Piyush Bansal',    'email' => 'pbansal@aes.ac.in',     'role' => 'fmo_user'],
+            ['name' => 'Mohd. Saleem',     'email' => 'msaleem@aes.ac.in',     'role' => 'fmo_user'],
+            ['name' => 'Ajay Sharma',      'email' => 'ajsharma@aes.ac.in',    'role' => 'fmo_user'],
+            ['name' => 'Robin Gilbert',    'email' => 'rgilbert@aes.ac.in',    'role' => 'fmo_admin'],
+            ['name' => 'Pooja Dixit',      'email' => 'pdixit@aes.ac.in',      'role' => 'fmo_admin'],
+            ['name' => 'Sarabjeet Kaur',   'email' => 'sakaur@aes.ac.in',      'role' => 'fmo_admin'],
+            ['name' => 'Kuldeep Singh',    'email' => 'kusingh@aes.ac.in',     'role' => 'po_admin'],
+            ['name' => 'Jyotsana Nagarkoti', 'email' => 'jnagarkoti@aes.ac.in', 'role' => 'po_user'],
+            ['name' => 'Jasraj Gill',      'email' => 'jgill@aes.ac.in',       'role' => 'po_user'],
+        ];
 
-        User::create([
-            'name' => 'FMO User',
-            'email' => 'fmouser@example.com',
-            'role' => 'fmo_user',
-            // google_id will be populated on first Google login
-        ]);
-
-        User::create([
-            'name' => 'FMO Admin',
-            'email' => 'fmoadmin@example.com',
-            'role' => 'fmo_admin',
-        ]);
-
-        User::create([
-            'name' => 'PO Admin',
-            'email' => 'poadmin@example.com',
-            'role' => 'po_admin',
-        ]);
-
-        User::create([
-            'name' => 'PO User',
-            'email' => 'pouser@example.com',
-            'role' => 'po_user',
-        ]);
+        foreach ($users as $user) {
+            User::create($user);
+        }
     }
 }

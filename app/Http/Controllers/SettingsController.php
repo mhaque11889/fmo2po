@@ -16,17 +16,29 @@ class SettingsController extends Controller
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'refresh_interval' => 'required|integer|min:0|max:600',
-            'notification_sound' => 'required|in:chime,bell,ping,none',
-            'notify_on_new_request' => 'boolean',
-            'notify_on_status_change' => 'boolean',
-            'notify_on_task_assigned' => 'boolean',
+            'refresh_interval'         => 'required|integer|min:0|max:600',
+            'notification_sound'       => 'required|in:chime,bell,ping,none',
+            'notify_on_new_request'    => 'boolean',
+            'notify_on_status_change'  => 'boolean',
+            'notify_on_task_assigned'  => 'boolean',
+            'email_notifications'      => 'required|in:all,key_only,custom,none',
         ]);
 
-        // Convert checkboxes to boolean
-        $validated['notify_on_new_request'] = $request->has('notify_on_new_request');
+        // In-browser notification checkboxes
+        $validated['notify_on_new_request']   = $request->has('notify_on_new_request');
         $validated['notify_on_status_change'] = $request->has('notify_on_status_change');
         $validated['notify_on_task_assigned'] = $request->has('notify_on_task_assigned');
+
+        // Email notification custom flags
+        $emailBooleans = [
+            'email_on_approved', 'email_on_rejected', 'email_on_clarification',
+            'email_on_assigned', 'email_on_in_progress', 'email_on_completed',
+            'email_on_new_request', 'email_on_resubmitted', 'email_on_po_assigned',
+            'email_on_ready_to_assign', 'email_on_assigned_to_me',
+        ];
+        foreach ($emailBooleans as $key) {
+            $validated[$key] = $request->has($key);
+        }
 
         auth()->user()->update(['settings' => $validated]);
 

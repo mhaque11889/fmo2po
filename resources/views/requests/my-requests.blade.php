@@ -21,6 +21,10 @@
            class="px-4 py-2 rounded-md text-sm font-medium {{ $status === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300' }}">
             Pending Approval
         </a>
+        <a href="{{ route('requests.my', 'clarification_needed') }}"
+           class="px-4 py-2 rounded-md text-sm font-medium {{ $status === 'clarification_needed' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300' }}">
+            Needs Clarification
+        </a>
         <a href="{{ route('requests.my', 'approved') }}"
            class="px-4 py-2 rounded-md text-sm font-medium {{ $status === 'approved' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300' }}">
             Pending on PO
@@ -70,6 +74,8 @@
                                 'assigned' => 'bg-purple-100 text-purple-800',
                                 'in_progress' => 'bg-orange-100 text-orange-800',
                                 'completed' => 'bg-green-100 text-green-800',
+                                'cancelled' => 'bg-gray-100 text-gray-800',
+                                'clarification_needed' => 'bg-amber-100 text-amber-800',
                             ];
                             $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
                         @endphp

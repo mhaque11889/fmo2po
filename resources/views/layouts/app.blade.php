@@ -5,26 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name', 'FMO2PO') }} - @yield('title', 'Dashboard')</title>
+    <link rel="icon" type="image/png" href="/image.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-gray-300 min-h-screen">
-    <nav class="bg-white shadow-lg">
+    <nav class="bg-black shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center space-x-6">
-                    <a href="{{ route('dashboard') }}" class="text-xl font-bold text-indigo-600">
-                        FMO2PO
+                    <a href="{{ route('dashboard') }}" class="flex items-center gap-1">
+                        <img src="/aes-logo.png" alt="AES Logo" class="h-10 w-auto">
+                        <img src="/image.png" alt="FMO2PO" class="h-10 w-auto">
                     </a>
                     @auth
-                        <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">
+                        <a href="{{ route('dashboard') }}" class="text-gray-300 hover:text-white">
                             Dashboard
                         </a>
                         @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin() || auth()->user()->isPoAdmin())
-                            <a href="{{ route('reports.index') }}" class="text-gray-600 hover:text-gray-900">
+                            <a href="{{ route('reports.index') }}" class="text-gray-300 hover:text-white">
                                 Reports
                             </a>
-                            <a href="{{ route('admin.users.index') }}" class="text-gray-600 hover:text-gray-900">
+                            <a href="{{ route('admin.users.index') }}" class="text-gray-300 hover:text-white">
                                 Manage Users
                             </a>
                         @endif
@@ -32,10 +34,42 @@
                 </div>
                 <div class="flex items-center space-x-4">
                     @auth
+                        <!-- Notification Bell -->
+                        @if(auth()->user()->isPoUser() || auth()->user()->isPoAdmin() || auth()->user()->isSuperAdmin() || auth()->user()->isFmoUser() || auth()->user()->isFmoAdmin())
+                            <div class="relative" x-data="{ bellOpen: false }">
+                                <button @click="bellOpen = !bellOpen" @click.away="bellOpen = false"
+                                        id="bell-button"
+                                        class="relative flex items-center focus:outline-none hover:bg-gray-800 rounded-lg p-2 transition">
+                                    <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                                    </svg>
+                                    <span id="nudge-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 items-center justify-center font-bold">0</span>
+                                </button>
+
+                                <!-- Bell Dropdown -->
+                                <div x-show="bellOpen"
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="transform opacity-0 scale-95"
+                                     x-transition:enter-end="transform opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="transform opacity-100 scale-100"
+                                     x-transition:leave-end="transform opacity-0 scale-95"
+                                     class="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                                    <div class="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+                                        <p class="text-sm font-semibold text-gray-900" id="nudge-dropdown-title">Notifications</p>
+                                        <span id="nudge-dropdown-count" class="text-xs text-gray-500 font-medium"></span>
+                                    </div>
+                                    <div id="nudge-list" class="max-h-80 overflow-y-auto divide-y divide-gray-50">
+                                        <p class="px-4 py-4 text-sm text-gray-400 text-center">No unread update requests</p>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+
                         <!-- User Dropdown -->
                         <div class="relative" x-data="{ open: false }">
                             <button @click="open = !open" @click.away="open = false"
-                                    class="flex items-center space-x-3 focus:outline-none hover:bg-gray-50 rounded-lg px-3 py-2 transition">
+                                    class="flex items-center space-x-3 focus:outline-none hover:bg-gray-800 rounded-lg px-3 py-2 transition">
                                 @if(auth()->user()->avatar)
                                     <img src="{{ auth()->user()->avatar }}" alt="Avatar" class="w-8 h-8 rounded-full">
                                 @else
@@ -43,8 +77,8 @@
                                         <span class="text-indigo-600 font-medium text-sm">{{ substr(auth()->user()->name, 0, 1) }}</span>
                                     </div>
                                 @endif
-                                <span class="text-gray-700">{{ auth()->user()->name }}</span>
-                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <span class="text-white">{{ auth()->user()->name }}</span>
+                                <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                                 </svg>
                             </button>
@@ -215,6 +249,138 @@
             }
         }
 
+        // Nudge badge state
+        let previousNudgeCount = 0;
+
+        // Fetch nudge counts and update bell badge
+        async function checkNudges() {
+            const badge = document.getElementById('nudge-badge');
+            if (!badge) return; // No bell rendered
+
+            try {
+                const response = await fetch('{{ route("api.nudge-counts") }}');
+                const data = await response.json();
+                const count = data.count || 0;
+                const mode = data.mode || 'nudges';
+
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+
+                    // Play sound if new nudges arrived
+                    if (count > previousNudgeCount) {
+                        playNotificationSound(userSettings.notification_sound);
+                    }
+                } else {
+                    badge.classList.add('hidden');
+                    badge.classList.remove('flex');
+                }
+
+                // Update dropdown title
+                const titleEl = document.getElementById('nudge-dropdown-title');
+                if (titleEl) {
+                    titleEl.textContent = mode === 'fmo' ? 'Notifications' : 'Update Requests';
+                }
+
+                // Update dropdown count text
+                const countEl = document.getElementById('nudge-dropdown-count');
+                if (countEl) {
+                    countEl.textContent = count > 0 ? `${count} unread` : '';
+                }
+
+                // Render nudges in dropdown
+                renderNudgeList(data.nudges || [], mode);
+
+                previousNudgeCount = count;
+            } catch (error) {
+                console.error('Error fetching nudges:', error);
+            }
+        }
+
+        function renderNudgeList(nudges, mode) {
+            const list = document.getElementById('nudge-list');
+            if (!list) return;
+
+            const emptyMsg = mode === 'fmo' ? 'No new notifications' : 'No unread update requests';
+
+            if (nudges.length === 0) {
+                list.innerHTML = `<p class="px-4 py-4 text-sm text-gray-400 text-center">${emptyMsg}</p>`;
+                return;
+            }
+
+            list.innerHTML = nudges.map(nudge => {
+                const isCompletion = nudge.type === 'completion';
+                const accentClass = isCompletion ? 'border-l-2 border-green-400' : '';
+                const label = isCompletion
+                    ? `<span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded">&#10003; Completed</span>`
+                    : `<span class="text-xs text-gray-500">${mode === 'fmo' ? 'reply from' : 'from'} <span class="font-medium text-gray-700">${nudge.sender_name}</span></span>`;
+                const dismissBtn = isCompletion
+                    ? `<button onclick="markCompletedSeen(${nudge.id})" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-full transition">Mark as Seen</button>`
+                    : `<button onclick="${mode === 'fmo' ? 'markReplySeen' : 'acknowledgeNudge'}(${nudge.id})" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-full transition">${mode === 'fmo' ? 'Mark as Seen' : 'Acknowledge'}</button>`;
+
+                return `
+                <div class="px-4 py-3 hover:bg-gray-50 ${accentClass}" id="nudge-item-${nudge.type}-${nudge.id}">
+                    <div class="flex items-start gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                                ${label}
+                                <span class="text-xs text-gray-400">${nudge.sent_at}</span>
+                            </div>
+                            <a href="${nudge.request_url}" class="text-sm font-medium text-indigo-600 hover:underline block truncate">Request #${nudge.request_id}: ${nudge.request_item}</a>
+                            ${nudge.message ? `<p class="text-sm text-gray-600 mt-1 line-clamp-2">${nudge.message}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="mt-2 flex gap-2">
+                        ${dismissBtn}
+                        <a href="${nudge.request_url}" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full transition">View Request</a>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function acknowledgeNudge(nudgeId) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const response = await fetch(`/nudges/${nudgeId}/acknowledge`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                });
+                if (response.ok) {
+                    document.getElementById(`nudge-item-nudge-${nudgeId}`)?.remove();
+                    await checkNudges();
+                }
+            } catch (error) { console.error('Error acknowledging nudge:', error); }
+        }
+
+        async function markReplySeen(nudgeId) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const response = await fetch(`/nudges/${nudgeId}/mark-reply-seen`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                });
+                if (response.ok) {
+                    document.getElementById(`nudge-item-reply-${nudgeId}`)?.remove();
+                    await checkNudges();
+                }
+            } catch (error) { console.error('Error marking reply as seen:', error); }
+        }
+
+        async function markCompletedSeen(requestId) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const response = await fetch(`/requests/${requestId}/mark-completed-seen`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                });
+                if (response.ok) {
+                    document.getElementById(`nudge-item-completion-${requestId}`)?.remove();
+                    await checkNudges();
+                }
+            } catch (error) { console.error('Error marking completion as seen:', error); }
+        }
+
         // Auto-refresh dashboard
         function setupAutoRefresh() {
             if (refreshTimer) {
@@ -260,8 +426,14 @@
             // Initial count fetch
             checkForChanges();
 
+            // Initial nudge fetch (PO users only - badge won't render for others)
+            checkNudges();
+
             // Setup auto-refresh
             setupAutoRefresh();
+
+            // Poll for nudges every 30 seconds
+            setInterval(checkNudges, 30000);
         });
     </script>
     @endauth

@@ -30,20 +30,28 @@ class UserController extends Controller
         return [];
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $currentUser = auth()->user();
         $allowedRoles = $this->getAllowedRoles();
+        $showInactive = $request->query('show_inactive', false) && $currentUser->isSuperAdmin();
 
         if ($currentUser->isSuperAdmin()) {
-            $users = User::orderBy('name')->paginate(20);
+            $query = User::query();
+            if ($showInactive) {
+                $query->where('is_active', false);
+            } else {
+                $query->where('is_active', true);
+            }
+            $users = $query->orderBy('name')->paginate(20);
         } else {
-            $users = User::whereIn('role', $allowedRoles)
+            $users = User::where('is_active', true)
+                ->whereIn('role', $allowedRoles)
                 ->orderBy('name')
                 ->paginate(20);
         }
 
-        return view('admin.users.index', compact('users', 'allowedRoles'));
+        return view('admin.users.index', compact('users', 'allowedRoles', 'showInactive'));
     }
 
     public function updateRole(Request $request, User $user)
@@ -118,6 +126,61 @@ class UserController extends Controller
         $user->update($validated);
 
         return redirect()->route('admin.users.index')->with('success', 'User updated successfully.');
+    }
+
+    /**
+     * Delete a specific user.
+     * Admins can deactivate users within their allowed roles.
+     */
+    public function destroy(User $user)
+    {
+        $currentUser = auth()->user();
+        $allowedRoles = $this->getAllowedRoles();
+
+        // Check if current admin can manage this user
+        if (!$currentUser->isSuperAdmin() && !in_array($user->role, $allowedRoles)) {
+            abort(403, 'You cannot deactivate this user.');
+        }
+
+        // Prevent deactivating self
+        if ($user->id === $currentUser->id) {
+            return back()->with('error', 'You cannot deactivate your own account.');
+        }
+
+        // Check if user can be deactivated
+        [$canDeactivate, $reason] = $user->canBeDeactivated();
+
+        if (!$canDeactivate) {
+            return back()->with('error', $reason);
+        }
+
+        $userName = $user->name;
+        $user->is_active = false;
+        $user->save();
+
+        return back()->with('success', "User '{$userName}' has been deactivated successfully.");
+    }
+
+    /**
+     * Reactivate a deactivated user.
+     * Super admin only.
+     */
+    public function activate(User $user)
+    {
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403, 'You cannot reactivate users.');
+        }
+
+        // Check if already active
+        if ($user->is_active) {
+            return back()->with('info', 'User is already active.');
+        }
+
+        $userName = $user->name;
+        $user->is_active = true;
+        $user->save();
+
+        return back()->with('success', "User '{$userName}' has been reactivated successfully.");
     }
 
     /**

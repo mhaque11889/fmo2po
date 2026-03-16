@@ -5,6 +5,41 @@
 @section('content')
 <h1 class="text-2xl font-bold text-gray-900 mb-6">Purchase Office Admin Dashboard</h1>
 
+@if($unreadNudges->isNotEmpty())
+<!-- Unread Update Requests / Nudges Banner -->
+<div class="mb-6 bg-amber-50 border border-amber-300 rounded-lg shadow-sm overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 bg-amber-100 border-b border-amber-300">
+        <svg class="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+        </svg>
+        <span class="font-semibold text-amber-800 text-sm">{{ $unreadNudges->count() }} Pending Update {{ Str::plural('Request', $unreadNudges->count()) }}</span>
+    </div>
+    <div class="divide-y divide-amber-200">
+        @foreach($unreadNudges as $nudge)
+        <div class="flex items-start justify-between px-4 py-3 hover:bg-amber-100 transition-colors">
+            <div class="flex-1 min-w-0 mr-4">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <a href="{{ route('requests.show', $nudge->requirement_request_id) }}" class="font-medium text-amber-900 hover:underline text-sm">
+                        Request #{{ $nudge->requirement_request_id }}: {{ Str::limit($nudge->request->item ?? 'N/A', 40) }}
+                    </a>
+                    <span class="text-xs text-gray-400">{{ $nudge->created_at->diffForHumans() }}</span>
+                </div>
+                <p class="text-sm text-gray-700 mt-1">
+                    <span class="font-medium text-gray-600">From {{ $nudge->sender->name ?? 'Unknown' }}:</span>
+                    {{ Str::limit($nudge->message, 120) }}
+                </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <a href="{{ route('requests.show', $nudge->requirement_request_id) }}" class="text-xs bg-amber-600 text-white px-3 py-1.5 rounded hover:bg-amber-700 transition-colors">
+                    View &amp; Reply
+                </a>
+            </div>
+        </div>
+        @endforeach
+    </div>
+</div>
+@endif
+
 <!-- Stats Cards Section -->
 <div class="mb-8">
     <h2 class="text-xl font-semibold text-gray-800 mb-4">Request Statistics</h2>
@@ -70,6 +105,58 @@
         </a>
     </div>
 </div>
+
+<!-- Current Tasks (Assigned to Admin) -->
+@if($myAssignedRequests->isNotEmpty())
+<div class="mb-8">
+    <h2 class="text-xl font-semibold text-gray-800 mb-4">Your Current Tasks</h2>
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-orange-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dimensions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                @foreach($myAssignedRequests as $request)
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->dimensions ?? '-' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            @php
+                                $statusColors = [
+                                    'assigned' => 'bg-purple-100 text-purple-800',
+                                    'in_progress' => 'bg-orange-100 text-orange-800',
+                                ];
+                                $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
+                            @endphp
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
+                                {{ ucfirst(str_replace('_', ' ', $request->status)) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <a href="{{ route('requests.show', $request) }}" class="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition">
+                                View
+                            </a>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
 
 <!-- Approved Requests (Ready to Assign) -->
 <div>

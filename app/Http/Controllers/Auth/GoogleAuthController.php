@@ -19,7 +19,7 @@ class GoogleAuthController extends Controller
         try {
             $googleUser = Socialite::driver('google')->user();
         } catch (\Exception $e) {
-            return redirect()->route('login')
+            return redirect('/')
                 ->with('error', 'Unable to authenticate with Google. Please try again.');
         }
 
@@ -27,7 +27,7 @@ class GoogleAuthController extends Controller
         $user = User::where('email', $googleUser->email)->first();
 
         if (!$user) {
-            return redirect()->route('login')
+            return redirect('/')
                 ->with('error', 'Access denied. Your email is not registered in the system. Please contact an administrator.');
         }
 

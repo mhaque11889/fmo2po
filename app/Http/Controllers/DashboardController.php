@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\RequestNudge;
 use App\Models\RequirementRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -39,7 +40,7 @@ class DashboardController extends Controller
             ->latest()
             ->paginate(10, ['*'], 'assigned_page');
 
-        $poUsers = User::where('role', 'po_user')->get();
+        $poUsers = User::where('role', 'po_user')->where('is_active', true)->get();
 
         return view('dashboard.super-admin', compact('pendingRequests', 'approvedRequests', 'assignedRequests', 'poUsers'));
     }
@@ -52,6 +53,7 @@ class DashboardController extends Controller
         $stats = [
             'total' => RequirementRequest::where('created_by', $userId)->count(),
             'pending' => RequirementRequest::where('created_by', $userId)->where('status', 'pending')->count(),
+            'clarification_needed' => RequirementRequest::where('created_by', $userId)->where('status', 'clarification_needed')->count(),
             'pending_on_po' => RequirementRequest::where('created_by', $userId)->where('status', 'approved')->count(),
             'assigned' => RequirementRequest::where('created_by', $userId)->whereIn('status', ['assigned', 'in_progress'])->count(),
             'completed' => RequirementRequest::where('created_by', $userId)->where('status', 'completed')->count(),
@@ -89,12 +91,22 @@ class DashboardController extends Controller
 
     private function poAdminDashboard()
     {
+        $userId = auth()->id();
+
         $approvedRequests = RequirementRequest::where('status', 'approved')
             ->with('creator', 'approver')
             ->latest()
             ->paginate(10, ['*'], 'approved_page');
 
-        $poUsers = User::where('role', 'po_user')->get();
+        // Get tasks assigned to the PO Admin themselves
+        $myAssignedRequests = RequirementRequest::where('assigned_to', $userId)
+            ->whereIn('status', ['assigned', 'in_progress'])
+            ->with('creator', 'approver', 'assigner')
+            ->latest()
+            ->limit(10)
+            ->get();
+
+        $poUsers = User::where('role', 'po_user')->where('is_active', true)->get();
 
         // Stats for cards
         $stats = [
@@ -104,7 +116,13 @@ class DashboardController extends Controller
             'completed' => RequirementRequest::where('status', 'completed')->count(),
         ];
 
-        return view('dashboard.po-admin', compact('approvedRequests', 'poUsers', 'stats'));
+        $unreadNudges = RequestNudge::where('target_user_id', $userId)
+            ->whereNull('acknowledged_at')
+            ->with(['request', 'sender'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return view('dashboard.po-admin', compact('approvedRequests', 'myAssignedRequests', 'poUsers', 'stats', 'unreadNudges'));
     }
 
     private function poUserDashboard()
@@ -127,6 +145,12 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
-        return view('dashboard.po-user', compact('assignedRequests', 'stats'));
+        $unreadNudges = RequestNudge::where('target_user_id', $userId)
+            ->whereNull('acknowledged_at')
+            ->with(['request', 'sender'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return view('dashboard.po-user', compact('assignedRequests', 'stats', 'unreadNudges'));
     }
 }

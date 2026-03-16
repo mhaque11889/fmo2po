@@ -15,11 +15,5 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,
         ]);
-        User::create([
-            'name' => 'Md Manzarul Haque',
-            'email' => 'mhaque@aes.ac.in',
-            'role' => 'super_admin',
-            // google_id will be populated on first Google login
-        ]);
     }
 }

@@ -5,6 +5,41 @@
 @section('content')
 <h1 class="text-2xl font-bold text-gray-900 mb-6">My Assigned Requests</h1>
 
+@if($unreadNudges->isNotEmpty())
+<!-- Unread Update Requests / Nudges Banner -->
+<div class="mb-6 bg-amber-50 border border-amber-300 rounded-lg shadow-sm overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 bg-amber-100 border-b border-amber-300">
+        <svg class="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+        </svg>
+        <span class="font-semibold text-amber-800 text-sm">{{ $unreadNudges->count() }} Pending Update {{ Str::plural('Request', $unreadNudges->count()) }}</span>
+    </div>
+    <div class="divide-y divide-amber-200">
+        @foreach($unreadNudges as $nudge)
+        <div class="flex items-start justify-between px-4 py-3 hover:bg-amber-100 transition-colors">
+            <div class="flex-1 min-w-0 mr-4">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <a href="{{ route('requests.show', $nudge->requirement_request_id) }}" class="font-medium text-amber-900 hover:underline text-sm">
+                        Request #{{ $nudge->requirement_request_id }}: {{ Str::limit($nudge->request->item ?? 'N/A', 40) }}
+                    </a>
+                    <span class="text-xs text-gray-400">{{ $nudge->created_at->diffForHumans() }}</span>
+                </div>
+                <p class="text-sm text-gray-700 mt-1">
+                    <span class="font-medium text-gray-600">From {{ $nudge->sender->name ?? 'Unknown' }}:</span>
+                    {{ Str::limit($nudge->message, 120) }}
+                </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <a href="{{ route('requests.show', $nudge->requirement_request_id) }}" class="text-xs bg-amber-600 text-white px-3 py-1.5 rounded hover:bg-amber-700 transition-colors">
+                    View &amp; Reply
+                </a>
+            </div>
+        </div>
+        @endforeach
+    </div>
+</div>
+@endif
+
 <!-- Stats Cards Section -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
     <!-- All Requests -->

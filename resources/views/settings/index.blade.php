@@ -12,13 +12,17 @@
     </div>
 </div>
 
-<div class="max-w-2xl">
-    <form action="{{ route('settings.update') }}" method="POST">
-        @csrf
-        @method('PUT')
+<form action="{{ route('settings.update') }}" method="POST">
+    @csrf
+    @method('PUT')
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+        <!-- Left column: Dashboard Refresh + Notification Sound -->
+        <div class="space-y-6">
 
         <!-- Dashboard Refresh Settings -->
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 mb-4">Dashboard Refresh</h2>
 
             <div class="mb-4">
@@ -39,7 +43,7 @@
         </div>
 
         <!-- Notification Settings -->
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold text-gray-900 mb-4">Notification Sound</h2>
 
             <div class="mb-4">
@@ -88,14 +92,147 @@
             </div>
         </div>
 
-        <div class="flex justify-end">
-            <button type="submit"
-                    class="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 transition">
-                Save Settings
-            </button>
-        </div>
-    </form>
-</div>
+        </div><!-- end left column -->
+
+        <!-- Right column: Email Notifications -->
+        <div>
+
+        <!-- Email Notification Settings -->
+        <div class="bg-white rounded-lg shadow p-6"
+             x-data="{ emailPref: '{{ $settings['email_notifications'] }}' }">
+            <h2 class="text-lg font-semibold text-gray-900 mb-1">Email Notifications</h2>
+            <p class="text-sm text-gray-500 mb-4">Choose when you want to receive email updates about requests.</p>
+
+            <div class="space-y-3 mb-4">
+                <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+                       :class="emailPref === 'all' ? 'border-indigo-400 bg-indigo-50' : ''">
+                    <input type="radio" name="email_notifications" value="all"
+                           x-model="emailPref"
+                           class="mt-0.5 text-indigo-600">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">All status updates</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Email me at every stage of a request's lifecycle.</p>
+                    </div>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+                       :class="emailPref === 'key_only' ? 'border-indigo-400 bg-indigo-50' : ''">
+                    <input type="radio" name="email_notifications" value="key_only"
+                           x-model="emailPref"
+                           class="mt-0.5 text-indigo-600">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">Key updates only <span class="text-xs font-normal text-indigo-600 ml-1">Default</span></span>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            @if(auth()->user()->isFmoUser())
+                                Approved, rejected, clarification needed, and completed.
+                            @elseif(auth()->user()->isFmoAdmin())
+                                New submissions, resubmissions, and completions.
+                            @elseif(auth()->user()->isPoAdmin())
+                                New requests ready to assign, and completions.
+                            @elseif(auth()->user()->isPoUser())
+                                When a request is assigned to you.
+                            @endif
+                        </p>
+                    </div>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+                       :class="emailPref === 'custom' ? 'border-indigo-400 bg-indigo-50' : ''">
+                    <input type="radio" name="email_notifications" value="custom"
+                           x-model="emailPref"
+                           class="mt-0.5 text-indigo-600">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">Custom</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Choose exactly which events trigger an email.</p>
+                    </div>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+                       :class="emailPref === 'none' ? 'border-indigo-400 bg-indigo-50' : ''">
+                    <input type="radio" name="email_notifications" value="none"
+                           x-model="emailPref"
+                           class="mt-0.5 text-indigo-600">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">None</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Don't send me any email notifications.</p>
+                    </div>
+                </label>
+            </div>
+
+            {{-- Custom checkboxes — role-specific, only visible when Custom selected --}}
+            <div x-show="emailPref === 'custom'"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 class="border-t border-gray-200 pt-4 mt-2 space-y-2">
+                <p class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-3">Email me when:</p>
+
+                @php $cb = 'rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-200'; @endphp
+
+                @if(auth()->user()->isFmoUser())
+                    @foreach([
+                        ['email_on_approved',      'My request is approved by FMO Admin'],
+                        ['email_on_rejected',       'My request is rejected'],
+                        ['email_on_clarification',  'FMO Admin requests clarification'],
+                        ['email_on_assigned',       'My request is assigned to Purchase Office'],
+                        ['email_on_in_progress',    'Purchase Office starts working on my request'],
+                        ['email_on_completed',      'My request is completed'],
+                    ] as [$key, $label])
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="{{ $key }}" value="1" class="{{ $cb }}"
+                                   {{ $settings[$key] ?? false ? 'checked' : '' }}>
+                            <span class="text-sm text-gray-700">{{ $label }}</span>
+                        </label>
+                    @endforeach
+
+                @elseif(auth()->user()->isFmoAdmin())
+                    @foreach([
+                        ['email_on_new_request',  'A new request is submitted for review'],
+                        ['email_on_resubmitted',  'An FMO user resubmits after clarification'],
+                        ['email_on_po_assigned',  'A request is assigned to a PO team member'],
+                        ['email_on_completed',    'A request is completed'],
+                    ] as [$key, $label])
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="{{ $key }}" value="1" class="{{ $cb }}"
+                                   {{ $settings[$key] ?? false ? 'checked' : '' }}>
+                            <span class="text-sm text-gray-700">{{ $label }}</span>
+                        </label>
+                    @endforeach
+
+                @elseif(auth()->user()->isPoAdmin())
+                    @foreach([
+                        ['email_on_ready_to_assign', 'A new approved request is ready to assign'],
+                        ['email_on_po_assigned',     'A request is assigned to a PO team member'],
+                        ['email_on_in_progress',     'A PO team member starts working on a request'],
+                        ['email_on_completed',       'A request is completed'],
+                    ] as [$key, $label])
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="{{ $key }}" value="1" class="{{ $cb }}"
+                                   {{ $settings[$key] ?? false ? 'checked' : '' }}>
+                            <span class="text-sm text-gray-700">{{ $label }}</span>
+                        </label>
+                    @endforeach
+
+                @elseif(auth()->user()->isPoUser())
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="email_on_assigned_to_me" value="1" class="{{ $cb }}"
+                               {{ $settings['email_on_assigned_to_me'] ?? false ? 'checked' : '' }}>
+                        <span class="text-sm text-gray-700">A request is assigned to me</span>
+                    </label>
+                @endif
+            </div>
+        </div><!-- end email card -->
+
+        </div><!-- end right column -->
+    </div><!-- end grid -->
+
+    <div class="flex justify-end mt-4">
+        <button type="submit"
+                class="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 transition">
+            Save Settings
+        </button>
+    </div>
+</form>
 
 <script>
 // Test notification sound

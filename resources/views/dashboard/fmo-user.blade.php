@@ -12,7 +12,7 @@
 </div>
 
 <!-- Stats Cards Section -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
     <!-- Total Requests -->
     <a href="{{ route('requests.my') }}" class="bg-white rounded-lg shadow p-5 block hover:shadow-lg transition cursor-pointer">
         <div class="flex items-center">
@@ -39,6 +39,21 @@
             <div class="ml-4">
                 <p class="text-xs font-medium text-gray-500">Pending Approval</p>
                 <p class="text-2xl font-bold text-yellow-600">{{ $stats['pending'] }}</p>
+            </div>
+        </div>
+    </a>
+
+    <!-- Needs Clarification -->
+    <a href="{{ route('requests.my', 'clarification_needed') }}" class="bg-white rounded-lg shadow p-5 block hover:shadow-lg transition cursor-pointer {{ $stats['clarification_needed'] > 0 ? 'ring-2 ring-amber-400' : '' }}">
+        <div class="flex items-center">
+            <div class="p-3 rounded-full bg-amber-100 text-amber-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <div class="ml-4">
+                <p class="text-xs font-medium text-gray-500">Needs Clarification</p>
+                <p class="text-2xl font-bold text-amber-600">{{ $stats['clarification_needed'] }}</p>
             </div>
         </div>
     </a>
@@ -121,6 +136,8 @@
                                     'assigned' => 'bg-purple-100 text-purple-800',
                                     'in_progress' => 'bg-orange-100 text-orange-800',
                                     'completed' => 'bg-green-100 text-green-800',
+                                    'cancelled' => 'bg-gray-100 text-gray-800',
+                                    'clarification_needed' => 'bg-amber-100 text-amber-800',
                                 ];
                                 $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
                             @endphp

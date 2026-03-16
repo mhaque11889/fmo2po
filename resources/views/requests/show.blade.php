@@ -203,6 +203,7 @@
             @elseif($request->status === 'in_progress') bg-orange-50 border-b border-orange-200
             @elseif($request->status === 'completed') bg-green-50 border-b border-green-200
             @elseif($request->status === 'cancelled') bg-gray-50 border-b border-gray-200
+            @elseif($request->status === 'clarification_needed') bg-amber-50 border-b border-amber-200
             @else bg-red-50 border-b border-red-200
             @endif">
             <div class="flex items-center justify-between">
@@ -213,6 +214,7 @@
                     @elseif($request->status === 'in_progress') bg-orange-100 text-orange-800
                     @elseif($request->status === 'completed') bg-green-100 text-green-800
                     @elseif($request->status === 'cancelled') bg-gray-100 text-gray-800
+                    @elseif($request->status === 'clarification_needed') bg-amber-100 text-amber-800
                     @else bg-red-100 text-red-800
                     @endif">
                     {{ ucfirst(str_replace('_', ' ', $request->status)) }}
@@ -222,6 +224,24 @@
                 </span>
             </div>
         </div>
+
+        <!-- Clarification Needed Alert -->
+        @if($request->needsClarification())
+            <div class="mx-6 mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div class="flex">
+                    <svg class="w-5 h-5 text-amber-400 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <h4 class="text-sm font-medium text-amber-800">Clarification Requested</h4>
+                        <p class="mt-1 text-sm text-amber-700">{{ $request->clarificationRequester->name ?? 'Admin' }} requested clarification on {{ $request->clarification_requested_at ? $request->clarification_requested_at->format('M d, Y \a\t h:i A') : '' }}</p>
+                        <div class="mt-2 p-3 bg-white rounded border border-amber-100">
+                            <p class="text-sm text-gray-700">{{ $request->clarification_remarks }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
 
         <!-- Request Details -->
         <div class="p-6">
@@ -465,6 +485,111 @@
             </script>
         @endif
 
+        <!-- Update and Resubmit for FMO User (own clarification_needed requests) -->
+        @if(auth()->user()->isFmoUser() && $request->created_by === auth()->id() && $request->needsClarification())
+            <div class="border-t border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Update and Resubmit</h3>
+                <p class="text-sm text-gray-600 mb-4">Please review the clarification request above and update your request accordingly.</p>
+
+                <form id="resubmit-form" action="{{ route('requests.resubmit', $request) }}" method="POST" class="space-y-4">
+                    @csrf
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="item" class="block text-sm font-medium text-gray-700">Item *</label>
+                            <input type="text" name="item" id="item" value="{{ old('item', $request->item) }}" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="qty" class="block text-sm font-medium text-gray-700">Quantity *</label>
+                                <input type="number" name="qty" id="qty" value="{{ old('qty', $request->qty) }}" min="1" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label for="dimensions" class="block text-sm font-medium text-gray-700">Dimensions</label>
+                                <input type="text" name="dimensions" id="dimensions" value="{{ old('dimensions', $request->dimensions) }}"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="location" class="block text-sm font-medium text-gray-700">Location *</label>
+                            <input type="text" name="location" id="location" value="{{ old('location', $request->location) }}" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="remarks" class="block text-sm font-medium text-gray-700">Remarks</label>
+                            <textarea name="remarks" id="remarks" rows="3"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('remarks', $request->remarks) }}</textarea>
+                        </div>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition transform hover:scale-105">
+                            Resubmit Request
+                        </button>
+                    </div>
+                </form>
+                <form id="cancel-clarification-form" action="{{ route('requests.cancel', $request) }}" method="POST" class="mt-3">
+                    @csrf
+                    <button type="submit" onclick="return confirm('Are you sure you want to cancel this request?')"
+                        class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700">
+                        Cancel Request
+                    </button>
+                </form>
+            </div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const overlay = document.getElementById('action-animation-overlay');
+                const statusText = document.getElementById('action-status-text');
+                const resubmitForm = document.getElementById('resubmit-form');
+
+                if (resubmitForm) {
+                    resubmitForm.addEventListener('submit', async function(e) {
+                        e.preventDefault();
+
+                        const submitBtn = this.querySelector('button[type="submit"]');
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Resubmitting...';
+
+                        try {
+                            const formData = new FormData(this);
+                            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+                            const response = await fetch(this.action, {
+                                method: 'POST',
+                                body: formData,
+                                headers: {
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken
+                                }
+                            });
+
+                            const contentType = response.headers.get('content-type');
+                            if (!contentType || !contentType.includes('application/json')) {
+                                this.submit();
+                                return;
+                            }
+
+                            const data = await response.json();
+
+                            if (response.ok && data.success) {
+                                sessionStorage.setItem('flash_success', data.message);
+                                window.location.href = data.redirect;
+                            } else {
+                                alert(data.message || 'An error occurred.');
+                                submitBtn.disabled = false;
+                                submitBtn.textContent = 'Resubmit Request';
+                            }
+                        } catch (error) {
+                            this.submit();
+                        }
+                    });
+                }
+            });
+            </script>
+        @endif
+
         <!-- Delete Button for FMO User (own rejected requests) -->
         @if(auth()->user()->isFmoUser() && $request->created_by === auth()->id() && $request->isRejected())
             <div class="border-t border-gray-200 p-6">
@@ -569,6 +694,41 @@
                             Reject Request
                         </button>
                     </form>
+                    <button type="button" onclick="document.getElementById('clarification-modal').classList.remove('hidden')"
+                        class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition transform hover:scale-105">
+                        Need Clarification
+                    </button>
+                </div>
+            </div>
+
+            <!-- Clarification Modal -->
+            <div id="clarification-modal" class="fixed inset-0 z-50 hidden" aria-modal="true">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('clarification-modal').classList.add('hidden')"></div>
+                <div class="fixed inset-0 z-10 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Request Clarification</h3>
+                            <p class="text-sm text-gray-600 mb-4">Please provide details about what clarification is needed from the initiator.</p>
+                            <form id="clarification-form" action="{{ route('requests.clarification', $request) }}" method="POST">
+                                @csrf
+                                <div class="mb-4">
+                                    <label for="clarification_remarks" class="block text-sm font-medium text-gray-700 mb-1">Remarks *</label>
+                                    <textarea name="clarification_remarks" id="clarification_remarks" rows="4" required
+                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                        placeholder="What clarification is needed?"></textarea>
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" onclick="document.getElementById('clarification-modal').classList.add('hidden')"
+                                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
+                                        Send for Clarification
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -743,6 +903,40 @@
                 }
             });
             </script>
+        @endif
+
+        <!-- Escalation to Purchase Office for FMO Admin (approved/assigned/in_progress) -->
+        @if((auth()->user()->isFmoAdmin() || auth()->user()->isSuperAdmin()) &&
+            ($request->isApproved() || $request->isAssigned() || $request->isInProgress()))
+            <div class="border-t border-gray-200 p-6 bg-red-50">
+                <h4 class="text-md font-medium text-gray-900 mb-4">Escalation to Purchase Office</h4>
+
+                @if(!$request->assignee || !$request->assigner)
+                    <div class="p-4 bg-yellow-100 border border-yellow-300 rounded-lg mb-4">
+                        <p class="text-sm text-yellow-800">
+                            This request has not been assigned to a Purchase Office team member yet.
+                            Assignment is required to escalate.
+                        </p>
+                    </div>
+                    <button disabled class="px-4 py-2 bg-gray-400 text-white rounded-md cursor-not-allowed">
+                        Send Clarification Request (Not Assigned)
+                    </button>
+                @else
+                    <p class="text-sm text-gray-600 mb-4">
+                        Send a clarification request directly to the assigned PO team member
+                        (<strong>{{ $request->assignee->name }}</strong>) and
+                        PO Admin (<strong>{{ $request->assigner->name }}</strong>).
+                    </p>
+                    <a href="{{ $request->getEscalationMailtoLink() }}"
+                       target="_blank"
+                       class="inline-block px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition">
+                        Send Clarification Request
+                    </a>
+                    <p class="text-xs text-gray-500 mt-2">
+                        This will open Gmail in a new tab with pre-filled recipient addresses and request details.
+                    </p>
+                @endif
+            </div>
         @endif
 
         <!-- Actions for PO Admin (approved requests - ready to assign) -->
@@ -947,6 +1141,186 @@
                     </button>
                 </form>
             </div>
+        @endif
+
+        <!-- Nudge / Update Request Section -->
+        @php
+            $user = auth()->user();
+            $canSendNudge = ($user->isFmoUser() && $request->created_by === $user->id) || $user->isFmoAdmin() || $user->isSuperAdmin();
+            $isAssignedToPo = in_array($request->status, ['assigned', 'in_progress']) && $request->assigned_to;
+            $nudges = $request->nudges->load('sender', 'target');
+            $myUnreadNudges = $nudges->filter(fn($n) => $n->target_user_id === $user->id && !$n->isAcknowledged());
+        @endphp
+
+        {{-- PO side: show unread nudges as an alert at the top of this section --}}
+        @if(($user->isPoUser() || $user->isPoAdmin() || $user->isSuperAdmin()) && $myUnreadNudges->isNotEmpty())
+            <div class="border-t-4 border-amber-400 p-6 bg-amber-50">
+                <h3 class="text-base font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
+                    </svg>
+                    {{ $myUnreadNudges->count() }} Unread Update {{ $myUnreadNudges->count() === 1 ? 'Request' : 'Requests' }}
+                </h3>
+                @foreach($myUnreadNudges as $nudge)
+                    <div class="mb-4 bg-white border border-amber-200 rounded-lg p-4" id="nudge-block-{{ $nudge->id }}">
+                        <p class="text-xs text-gray-500 mb-1">From <span class="font-medium">{{ $nudge->sender->name }}</span> · {{ $nudge->created_at->format('M d, Y \a\t h:i A') }}</p>
+                        <p class="text-sm text-gray-800 mb-3">{{ $nudge->message }}</p>
+                        <div class="flex gap-2 items-start flex-wrap">
+                            <div class="flex-1 min-w-48">
+                                <form id="reply-form-{{ $nudge->id }}" action="{{ route('nudges.reply', $nudge) }}" method="POST" class="flex gap-2">
+                                    @csrf
+                                    <textarea name="reply" rows="1" placeholder="Type a reply..."
+                                        class="flex-1 text-sm rounded-md border-gray-300 shadow-sm focus:border-amber-300 focus:ring-amber-200 focus:ring-opacity-50 resize-none"></textarea>
+                                    <button type="submit" class="px-3 py-1.5 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 whitespace-nowrap">
+                                        Send Reply
+                                    </button>
+                                </form>
+                            </div>
+                            <form action="{{ route('nudges.acknowledge', $nudge) }}" method="POST">
+                                @csrf
+                                <button type="submit" class="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-md hover:bg-gray-200">
+                                    Acknowledge
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('[id^="reply-form-"]').forEach(form => {
+                    form.addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        const submitBtn = this.querySelector('button[type="submit"]');
+                        submitBtn.disabled = true;
+                        try {
+                            const formData = new FormData(this);
+                            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                            const response = await fetch(this.action, {
+                                method: 'POST',
+                                body: formData,
+                                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                            });
+                            const data = await response.json();
+                            if (response.ok && data.success) {
+                                sessionStorage.setItem('flash_success', 'Reply sent.');
+                                window.location.reload();
+                            } else {
+                                alert(data.message || 'Failed to send reply.');
+                                submitBtn.disabled = false;
+                            }
+                        } catch (err) {
+                            this.submit();
+                        }
+                    });
+                });
+            });
+            </script>
+        @endif
+
+        {{-- FMO side: show nudge send form when request is assigned/in_progress --}}
+        @if($canSendNudge && $isAssignedToPo)
+            <div class="border-t border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-base font-medium text-gray-900">Request Update from PO</h3>
+                    <button type="button" onclick="document.getElementById('nudge-form-area').classList.toggle('hidden')"
+                        class="text-sm text-indigo-600 hover:underline">
+                        + Send Update Request
+                    </button>
+                </div>
+
+                {{-- Send nudge form (hidden by default) --}}
+                <div id="nudge-form-area" class="hidden mb-4 bg-indigo-50 border border-indigo-100 rounded-lg p-4">
+                    <p class="text-sm text-gray-600 mb-3">Send a message to <strong>{{ $request->assignee->name ?? 'the assigned user' }}</strong> requesting a status update.</p>
+                    <form id="send-nudge-form" action="{{ route('nudges.store', $request) }}" method="POST" class="space-y-3">
+                        @csrf
+                        <textarea name="message" rows="3" required maxlength="500"
+                            class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            placeholder="Please provide an update on this request. We need it by [date]. Any blockers?"></textarea>
+                        <div class="flex gap-2">
+                            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700">
+                                Send Request
+                            </button>
+                            <button type="button" onclick="document.getElementById('nudge-form-area').classList.add('hidden')"
+                                class="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-md hover:bg-gray-200">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {{-- History of nudges sent by FMO on this request --}}
+                @php $fmoNudges = $nudges->filter(fn($n) => $n->sent_by === $user->id || $user->isFmoAdmin() || $user->isSuperAdmin()); @endphp
+                @if($fmoNudges->isNotEmpty())
+                    <div class="space-y-3">
+                        @foreach($fmoNudges as $nudge)
+                            <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs text-gray-500">Sent by <strong>{{ $nudge->sender->name }}</strong> to <strong>{{ $nudge->target->name }}</strong> · {{ $nudge->created_at->format('M d, Y \a\t h:i A') }}</span>
+                                    @if($nudge->hasReply())
+                                        <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Replied</span>
+                                    @elseif($nudge->isAcknowledged())
+                                        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">Acknowledged</span>
+                                    @else
+                                        <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">Awaiting Response</span>
+                                    @endif
+                                </div>
+                                <p class="text-gray-700">{{ $nudge->message }}</p>
+                                @if($nudge->hasReply())
+                                    <div class="mt-2 pl-3 border-l-2 border-green-400">
+                                        <p class="text-xs text-gray-500 mb-0.5">Reply from <strong>{{ $nudge->target->name }}</strong> · {{ $nudge->replied_at->format('M d, Y \a\t h:i A') }}</p>
+                                        <p class="text-gray-700">{{ $nudge->reply }}</p>
+                                    </div>
+                                @elseif($nudge->isAcknowledged())
+                                    <div class="mt-2 pl-3 border-l-2 border-gray-300">
+                                        <p class="text-xs text-gray-500">Acknowledged on {{ $nudge->acknowledged_at->format('M d, Y \a\t h:i A') }}</p>
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <p class="text-sm text-gray-400">No update requests sent yet.</p>
+                @endif
+            </div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const sendNudgeForm = document.getElementById('send-nudge-form');
+                if (sendNudgeForm) {
+                    sendNudgeForm.addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        const submitBtn = this.querySelector('button[type="submit"]');
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Sending...';
+
+                        try {
+                            const formData = new FormData(this);
+                            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                            const response = await fetch(this.action, {
+                                method: 'POST',
+                                body: formData,
+                                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                            });
+                            const data = await response.json();
+                            if (response.ok && data.success) {
+                                // Reset and hide form, reload page to show new nudge
+                                sessionStorage.setItem('flash_success', 'Update request sent successfully.');
+                                window.location.reload();
+                            } else {
+                                alert(data.message || 'Failed to send.');
+                                submitBtn.disabled = false;
+                                submitBtn.textContent = 'Send Request';
+                            }
+                        } catch (err) {
+                            this.submit();
+                        }
+                    });
+                }
+
+            });
+            </script>
         @endif
     </div>
 </div>
