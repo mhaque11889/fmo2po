@@ -17,6 +17,7 @@
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
@@ -30,8 +31,16 @@
             @forelse($requests as $request)
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ $request->category->name ?? '—' }}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                        {{ $request->display_item }}
+                        @if($request->priority === 'urgent')
+                            <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                        @endif
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->created_at ? $request->created_at->format('M d, Y') : 'N/A' }}</td>

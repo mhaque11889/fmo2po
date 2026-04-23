@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\UserGroupController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\DashboardController;
@@ -94,6 +96,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/requests/{requirementRequest}/clarification', [RequirementRequestController::class, 'requestClarification'])->name('requests.clarification');
     });
 
+    // Group Approver routes - accessible by fmo_user and fmo_admin who are designated group approvers
+    Route::middleware('role:fmo_user,fmo_admin,super_admin')->group(function () {
+        Route::post('/requests/{requirementRequest}/group-approve', [RequirementRequestController::class, 'groupApprove'])->name('requests.group-approve');
+        Route::post('/requests/{requirementRequest}/group-reject', [RequirementRequestController::class, 'groupReject'])->name('requests.group-reject');
+        Route::post('/requests/{requirementRequest}/group-clarification', [RequirementRequestController::class, 'groupRequestClarification'])->name('requests.group-clarification');
+    });
+
     // PO Admin routes - assign
     Route::middleware('role:po_admin,super_admin')->group(function () {
         Route::post('/requests/{requirementRequest}/assign', [RequirementRequestController::class, 'assign'])->name('requests.assign');
@@ -125,6 +134,40 @@ Route::middleware('auth')->group(function () {
         Route::get('/users/import', [UserController::class, 'showImport'])->name('users.import');
         Route::post('/users/import', [UserController::class, 'import'])->name('users.import.store');
         Route::get('/users/import/template', [UserController::class, 'downloadTemplate'])->name('users.import.template');
+    });
+
+    // Category management — FMO Admin + Super Admin only
+    Route::middleware('role:fmo_admin,super_admin')->prefix('admin/categories')->name('admin.categories.')->group(function () {
+        Route::get('/', [CategoryController::class, 'index'])->name('index');
+        Route::get('/create', [CategoryController::class, 'create'])->name('create');
+        Route::post('/', [CategoryController::class, 'store'])->name('store');
+        Route::get('/{category}/edit', [CategoryController::class, 'edit'])->name('edit');
+        Route::put('/{category}', [CategoryController::class, 'update'])->name('update');
+        Route::delete('/{category}', [CategoryController::class, 'destroy'])->name('destroy');
+    });
+
+    // FMO Group management — FMO Admin + Super Admin only
+    Route::middleware('role:fmo_admin,super_admin')->prefix('admin/fmo-groups')->name('admin.fmo-groups.')->group(function () {
+        Route::get('/', [UserGroupController::class, 'index'])->defaults('type', 'fmo')->name('index');
+        Route::get('/create', [UserGroupController::class, 'create'])->defaults('type', 'fmo')->name('create');
+        Route::post('/', [UserGroupController::class, 'store'])->defaults('type', 'fmo')->name('store');
+        Route::get('/{userGroup}/edit', [UserGroupController::class, 'edit'])->name('edit');
+        Route::put('/{userGroup}', [UserGroupController::class, 'update'])->name('update');
+        Route::delete('/{userGroup}', [UserGroupController::class, 'destroy'])->name('destroy');
+        Route::post('/{userGroup}/members', [UserGroupController::class, 'addMember'])->name('members.add');
+        Route::delete('/{userGroup}/members/{user}', [UserGroupController::class, 'removeMember'])->name('members.remove');
+    });
+
+    // PO Group management — PO Admin + Super Admin only
+    Route::middleware('role:po_admin,super_admin')->prefix('admin/po-groups')->name('admin.po-groups.')->group(function () {
+        Route::get('/', [UserGroupController::class, 'index'])->defaults('type', 'po')->name('index');
+        Route::get('/create', [UserGroupController::class, 'create'])->defaults('type', 'po')->name('create');
+        Route::post('/', [UserGroupController::class, 'store'])->defaults('type', 'po')->name('store');
+        Route::get('/{userGroup}/edit', [UserGroupController::class, 'edit'])->name('edit');
+        Route::put('/{userGroup}', [UserGroupController::class, 'update'])->name('update');
+        Route::delete('/{userGroup}', [UserGroupController::class, 'destroy'])->name('destroy');
+        Route::post('/{userGroup}/members', [UserGroupController::class, 'addMember'])->name('members.add');
+        Route::delete('/{userGroup}/members/{user}', [UserGroupController::class, 'removeMember'])->name('members.remove');
     });
 
     // Reports routes (accessible by fmo_admin and po_admin)

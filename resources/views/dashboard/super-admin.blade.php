@@ -31,8 +31,13 @@
                 @forelse($pendingRequests as $request)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {{ $request->display_item }}
+                            @if($request->priority === 'urgent')
+                                <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->created_at->format('M d, Y') }}</td>
@@ -78,7 +83,12 @@
                 @forelse($approvedRequests as $request)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {{ $request->display_item }}
+                            @if($request->priority === 'urgent')
+                                <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                            @endif
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
@@ -125,8 +135,13 @@
                 @forelse($assignedRequests as $request)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {{ $request->display_item }}
+                            @if($request->priority === 'urgent')
+                                <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->assignee->name ?? '-' }}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 py-1 text-xs rounded-full {{ $request->status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800' }}">

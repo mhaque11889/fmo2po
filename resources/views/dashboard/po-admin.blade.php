@@ -3,7 +3,7 @@
 @section('title', 'Purchase Office Admin Dashboard')
 
 @section('content')
-<h1 class="text-2xl font-bold text-gray-900 mb-6">Purchase Office Admin Dashboard</h1>
+<h1 class="text-2xl font-bold text-gray-900 mb-6 leading-tight">Purchase Office Admin Dashboard</h1>
 
 @if($unreadNudges->isNotEmpty())
 <!-- Unread Update Requests / Nudges Banner -->
@@ -110,50 +110,89 @@
 @if($myAssignedRequests->isNotEmpty())
 <div class="mb-8">
     <h2 class="text-xl font-semibold text-gray-800 mb-4">Your Current Tasks</h2>
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-orange-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dimensions</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                @foreach($myAssignedRequests as $request)
+
+    {{-- Desktop table --}}
+    <div class="hidden md:block bg-white rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-orange-50">
                     <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->dimensions ?? '-' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            @php
-                                $statusColors = [
-                                    'assigned' => 'bg-purple-100 text-purple-800',
-                                    'in_progress' => 'bg-orange-100 text-orange-800',
-                                ];
-                                $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
-                            @endphp
-                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
-                                {{ ucfirst(str_replace('_', ' ', $request->status)) }}
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            <a href="{{ route('requests.show', $request) }}" class="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition">
-                                View
-                            </a>
-                        </td>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Specifications</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    @foreach($myAssignedRequests as $request)
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                {{ $request->display_item }}
+                                @if($request->priority === 'urgent')
+                                    <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                                @endif
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                @php
+                                    $statusColors = [
+                                        'assigned' => 'bg-purple-100 text-purple-800',
+                                        'in_progress' => 'bg-orange-100 text-orange-800',
+                                    ];
+                                    $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
+                                @endphp
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
+                                    {{ ucfirst(str_replace('_', ' ', $request->status)) }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <a href="{{ route('requests.show', $request) }}" class="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Mobile cards --}}
+    <div class="md:hidden space-y-3">
+        @foreach($myAssignedRequests as $request)
+            @php
+                $statusColors = ['assigned' => 'bg-purple-100 text-purple-800', 'in_progress' => 'bg-orange-100 text-orange-800'];
+                $color = $statusColors[$request->status] ?? 'bg-gray-100 text-gray-800';
+            @endphp
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold text-gray-400 uppercase">#{{ $request->id }}</span>
+                    <span class="px-2 py-0.5 text-xs font-semibold rounded-full {{ $color }}">
+                        {{ ucfirst(str_replace('_', ' ', $request->status)) }}
+                    </span>
+                </div>
+                <p class="text-sm font-semibold text-gray-900 mb-1">{{ $request->item }}</p>
+                @if($request->specifications)
+                    <p class="text-xs text-gray-500 mb-2">{{ $request->specifications }}</p>
+                @endif
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 mb-3">
+                    <span><span class="font-medium">Qty:</span> {{ $request->qty }}</span>
+                    <span><span class="font-medium">Location:</span> {{ $request->location }}</span>
+                    <span><span class="font-medium">By:</span> {{ $request->creator->name }}</span>
+                </div>
+                <a href="{{ route('requests.show', $request) }}"
+                   class="inline-flex items-center px-3 py-1.5 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition text-sm">
+                    View
+                </a>
+            </div>
+        @endforeach
     </div>
 </div>
 @endif
@@ -161,46 +200,83 @@
 <!-- Approved Requests (Ready to Assign) -->
 <div>
     <h2 class="text-xl font-semibold text-gray-800 mb-4">Requests Ready to Assign</h2>
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-blue-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dimensions</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Approved By</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                @forelse($approvedRequests as $request)
+
+    {{-- Desktop table --}}
+    <div class="hidden md:block bg-white rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-blue-50">
                     <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->dimensions ?? '-' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->approver->name ?? '-' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            <a href="{{ route('requests.show', $request) }}" class="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition">
-                                View
-                            </a>
-                        </td>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Specifications</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Approved By</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
-                @empty
-                    <tr>
-                        <td colspan="8" class="px-6 py-4 text-center text-gray-500">
-                            No approved requests waiting for assignment
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    @forelse($approvedRequests as $request)
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                {{ $request->display_item }}
+                                @if($request->priority === 'urgent')
+                                    <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                                @endif
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->creator->name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->approver->name ?? '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <a href="{{ route('requests.show', $request) }}" class="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="8" class="px-6 py-4 text-center text-gray-500">
+                                No approved requests waiting for assignment
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
+
+    {{-- Mobile cards --}}
+    <div class="md:hidden space-y-3">
+        @forelse($approvedRequests as $request)
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold text-gray-400 uppercase">#{{ $request->id }}</span>
+                    <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-medium">Ready to Assign</span>
+                </div>
+                <p class="text-sm font-semibold text-gray-900 mb-1">{{ $request->item }}</p>
+                @if($request->specifications)
+                    <p class="text-xs text-gray-500 mb-2">{{ $request->specifications }}</p>
+                @endif
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 mb-3">
+                    <span><span class="font-medium">Qty:</span> {{ $request->qty }}</span>
+                    <span><span class="font-medium">Location:</span> {{ $request->location }}</span>
+                    <span><span class="font-medium">By:</span> {{ $request->creator->name }}</span>
+                    <span><span class="font-medium">Approved by:</span> {{ $request->approver->name ?? '-' }}</span>
+                </div>
+                <a href="{{ route('requests.show', $request) }}"
+                   class="inline-flex items-center px-3 py-1.5 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition text-sm">
+                    View
+                </a>
+            </div>
+        @empty
+            <div class="bg-white rounded-lg shadow p-4 text-center text-gray-500 text-sm">No approved requests waiting for assignment</div>
+        @endforelse
+    </div>
+
     <div class="mt-4">
         {{ $approvedRequests->links() }}
     </div>

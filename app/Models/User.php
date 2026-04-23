@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -145,6 +146,33 @@ class User extends Authenticatable
     public function assignedRequests()
     {
         return $this->hasMany(RequirementRequest::class, 'assigned_to');
+    }
+
+    public function userGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(UserGroup::class, 'user_group_members')->withTimestamps();
+    }
+
+    /**
+     * Returns IDs of all users in the same group(s), including self.
+     * Falls back to [self] if user is not in any group.
+     */
+    public function getGroupMemberIds(): array
+    {
+        $groupIds = $this->userGroups()->pluck('user_groups.id');
+
+        if ($groupIds->isEmpty()) {
+            return [$this->id];
+        }
+
+        return UserGroup::whereIn('id', $groupIds)
+            ->with('members')
+            ->get()
+            ->flatMap(fn($g) => $g->members->pluck('id'))
+            ->push($this->id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function isFmoUser(): bool

@@ -10,9 +10,12 @@ use App\Events\RequestMarkedInProgress;
 use App\Events\RequestRejected;
 use App\Events\RequestResubmitted;
 use App\Events\RequestSubmitted;
+use App\Models\Category;
 use App\Models\RequestAttachment;
 use App\Models\RequirementRequest;
+use App\Models\RequirementRequestItem;
 use App\Models\User;
+use App\Models\UserGroup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -22,7 +25,22 @@ class RequirementRequestController extends Controller
 {
     public function index()
     {
-        $requests = RequirementRequest::with(['creator', 'approver', 'assignee', 'assigner'])
+        $requests = RequirementRequest::with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items'])
+            // Hide pending requests that still need group approval
+            ->where(function ($q) {
+                $q->where('status', '!=', 'pending')
+                  ->orWhere(function ($q2) {
+                      $q2->whereNotNull('group_approved_by')
+                         ->orWhereNotIn('created_by', function ($sub) {
+                             $sub->select('ugm.user_id')
+                                 ->from('user_group_members as ugm')
+                                 ->join('user_groups as ug', 'ug.id', '=', 'ugm.user_group_id')
+                                 ->where('ug.type', 'fmo')
+                                 ->whereNotNull('ug.group_approver_id');
+                         });
+                  });
+            })
+            ->orderByRaw("FIELD(priority, 'urgent', 'normal')")
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
@@ -31,15 +49,20 @@ class RequirementRequestController extends Controller
 
     public function myRequests(?string $status = null)
     {
-        $query = RequirementRequest::where('created_by', auth()->id());
+        $user = auth()->user();
+        $memberIds = $user->getGroupMemberIds();
+        $isGroupView = count($memberIds) > 1;
+
+        $query = RequirementRequest::whereIn('created_by', $memberIds);
 
         $title = 'All My Requests';
 
         if ($status) {
-            $validStatuses = ['pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled', 'clarification_needed'];
+            $validStatuses = ['group_pending', 'pending', 'approved', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled', 'clarification_needed'];
             if (in_array($status, $validStatuses)) {
                 $query->where('status', $status);
                 $statusTitles = [
+                    'group_pending' => 'Pending Group Approval',
                     'pending' => 'Pending Approval',
                     'approved' => 'Pending on Purchase Office',
                     'assigned' => 'Assigned to PO User',
@@ -53,16 +76,21 @@ class RequirementRequestController extends Controller
             }
         }
 
-        $requests = $query->with(['creator', 'approver', 'assignee', 'assigner'])
+        $requests = $query->with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items'])
+            ->orderByRaw("FIELD(priority, 'urgent', 'normal')")
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
-        return view('requests.my-requests', compact('requests', 'title', 'status'));
+        return view('requests.my-requests', compact('requests', 'title', 'status', 'isGroupView'));
     }
 
     public function myAssignedRequests(?string $status = null)
     {
-        $query = RequirementRequest::where('assigned_to', auth()->id());
+        $user = auth()->user();
+        $memberIds = $user->getGroupMemberIds();
+        $isGroupView = count($memberIds) > 1;
+
+        $query = RequirementRequest::whereIn('assigned_to', $memberIds);
 
         $title = 'All My Assigned Requests';
 
@@ -79,16 +107,18 @@ class RequirementRequestController extends Controller
             }
         }
 
-        $requests = $query->with(['creator', 'approver', 'assignee', 'assigner'])
+        $requests = $query->with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items'])
+            ->orderByRaw("FIELD(priority, 'urgent', 'normal')")
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
-        return view('requests.my-assigned', compact('requests', 'title', 'status'));
+        return view('requests.my-assigned', compact('requests', 'title', 'status', 'isGroupView'));
     }
 
     public function create()
     {
-        return view('requests.create');
+        $categories = Category::active()->get();
+        return view('requests.create', compact('categories'));
     }
 
     public function store(Request $request)
@@ -97,13 +127,16 @@ class RequirementRequestController extends Controller
 
         try {
             $rules = [
-                'item' => 'required|string|max:255',
-                'dimensions' => 'nullable|string|max:255',
-                'qty' => 'required|integer|min:1',
-                'location' => 'required|string|max:255',
-                'remarks' => 'nullable|string',
-                'attachments' => 'nullable|array|max:2',
-                'attachments.*' => 'file|mimes:pdf,jpg,jpeg,png,gif|max:5120', // 5MB max
+                'category_id'          => 'required|exists:categories,id',
+                'items'                => 'required|array|min:1',
+                'items.*.item'         => 'required|string|max:255',
+                'items.*.qty'          => 'required|integer|min:1',
+                'items.*.specifications' => 'nullable|string|max:255',
+                'location'             => 'required|string|max:255',
+                'priority'             => 'required|in:normal,urgent',
+                'remarks'              => 'nullable|string',
+                'attachments'          => 'nullable|array|max:10',
+                'attachments.*'        => 'file|mimes:pdf,jpg,jpeg,png,gif|max:5120', // 5MB max
             ];
 
             $validator = \Illuminate\Support\Facades\Validator::make($request->all(), $rules);
@@ -119,28 +152,54 @@ class RequirementRequestController extends Controller
             }
 
             $validated = $validator->validated();
-
-            $validated['created_by'] = auth()->id();
-
-            // Remove attachments from validated data before creating request
             $attachmentFiles = $request->file('attachments', []);
-            unset($validated['attachments']);
 
-            $requirementRequest = RequirementRequest::create($validated);
+            $requirementRequest = DB::transaction(function () use ($validated, $attachmentFiles) {
+                $creator = auth()->user();
 
-            // Handle file attachments
-            if (!empty($attachmentFiles)) {
-                $this->storeAttachments($requirementRequest, $attachmentFiles);
-            }
+                // Determine initial status based on category-specific or default group approver
+                $initialStatus = 'pending';
+                $creatorGroup = UserGroup::where('type', 'fmo')
+                    ->whereHas('members', fn($q) => $q->where('users.id', $creator->id))
+                    ->with('categoryApprovers')
+                    ->first();
 
-            // Log creation in history
-            RequirementRequest::logHistory(
-                $requirementRequest->id,
-                auth()->id(),
-                'created'
-            );
+                if ($creatorGroup) {
+                    $approverId = $creatorGroup->getApproverForCategory($validated['category_id']);
+                    if ($approverId !== null && $approverId !== $creator->id) {
+                        $initialStatus = 'group_pending';
+                    }
+                }
 
-            event(new RequestSubmitted($requirementRequest));
+                $rr = RequirementRequest::create([
+                    'created_by'  => $creator->id,
+                    'category_id' => $validated['category_id'],
+                    'location'    => $validated['location'],
+                    'remarks'     => $validated['remarks'] ?? null,
+                    'status'      => $initialStatus,
+                    'priority'    => $validated['priority'],
+                ]);
+
+                foreach ($validated['items'] as $sortOrder => $itemData) {
+                    RequirementRequestItem::create([
+                        'requirement_request_id' => $rr->id,
+                        'item'                   => $itemData['item'],
+                        'qty'                    => (int) $itemData['qty'],
+                        'specifications'         => $itemData['specifications'] ?? null,
+                        'sort_order'             => $sortOrder,
+                    ]);
+                }
+
+                if (!empty($attachmentFiles)) {
+                    $this->storeAttachments($rr, $attachmentFiles);
+                }
+
+                RequirementRequest::logHistory($rr->id, auth()->id(), 'created');
+                event(new RequestSubmitted($rr));
+
+                return $rr;
+            });
+
             if ($isAjax) {
                 return response()->json([
                     'success' => true,
@@ -167,6 +226,148 @@ class RequirementRequestController extends Controller
                 ->with('error', 'An error occurred while submitting your request.')
                 ->withInput();
         }
+    }
+
+    /**
+     * Group Approver: approve a group_pending request → moves it to pending (FMO Admin queue).
+     */
+    public function groupApprove(RequirementRequest $requirementRequest, Request $httpRequest)
+    {
+        if (!$this->isGroupApproverForRequest(auth()->user(), $requirementRequest)) {
+            abort(403);
+        }
+
+        DB::transaction(function () use ($requirementRequest) {
+            $updated = RequirementRequest::whereKey($requirementRequest->id)
+                ->whereIn('status', ['group_pending', 'pending'])
+                ->whereNull('approved_by')
+                ->update([
+                    'status'           => 'pending',
+                    'group_approved_by' => auth()->id(),
+                    'group_approved_at' => now(),
+                ]);
+
+            abort_unless($updated === 1, 422, 'This request cannot be group-approved.');
+
+            RequirementRequest::logHistory($requirementRequest->id, auth()->id(), 'group_approved');
+        });
+
+        $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
+
+        if ($isAjax) {
+            return response()->json([
+                'success'  => true,
+                'message'  => 'Request approved and forwarded to FMO Admin.',
+                'redirect' => route('dashboard'),
+            ]);
+        }
+
+        return back()->with('success', 'Request approved and forwarded to FMO Admin.');
+    }
+
+    /**
+     * Group Approver: reject a group_pending request.
+     */
+    public function groupReject(RequirementRequest $requirementRequest, Request $httpRequest)
+    {
+        if (!$this->isGroupApproverForRequest(auth()->user(), $requirementRequest)) {
+            abort(403);
+        }
+
+        $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
+
+        $validated = $httpRequest->validate([
+            'rejection_remarks' => 'nullable|string|max:1000',
+        ]);
+
+        DB::transaction(function () use ($requirementRequest, $validated) {
+            $updated = RequirementRequest::whereKey($requirementRequest->id)
+                ->whereIn('status', ['group_pending', 'pending'])
+                ->whereNull('approved_by')
+                ->update([
+                    'status'            => 'rejected',
+                    'group_approved_by' => auth()->id(),
+                    'group_approved_at' => now(),
+                    'rejection_remarks' => $validated['rejection_remarks'] ?? null,
+                ]);
+
+            abort_unless($updated === 1, 422, 'This request cannot be group-rejected.');
+
+            RequirementRequest::logHistory($requirementRequest->id, auth()->id(), 'rejected', null, $validated['rejection_remarks'] ?? null);
+            event(new RequestRejected($requirementRequest->fresh()));
+        });
+
+        if ($isAjax) {
+            return response()->json([
+                'success'  => true,
+                'message'  => 'Request rejected.',
+                'redirect' => route('dashboard'),
+            ]);
+        }
+
+        return back()->with('success', 'Request rejected.');
+    }
+
+    /**
+     * Group Approver: send a group_pending request back for clarification.
+     */
+    public function groupRequestClarification(RequirementRequest $requirementRequest, Request $httpRequest)
+    {
+        if (!$this->isGroupApproverForRequest(auth()->user(), $requirementRequest)) {
+            abort(403);
+        }
+
+        $isAjax = $httpRequest->ajax() || $httpRequest->wantsJson() || $httpRequest->header('X-Requested-With') === 'XMLHttpRequest';
+
+        $canAct = ($requirementRequest->isGroupPending() || ($requirementRequest->isPending() && !$requirementRequest->approved_by));
+        if (!$canAct) {
+            if ($isAjax) {
+                return response()->json(['success' => false, 'message' => 'This request cannot be sent for clarification.'], 422);
+            }
+            return back()->with('error', 'This request cannot be sent for clarification.');
+        }
+
+        $validated = $httpRequest->validate([
+            'clarification_remarks' => 'required|string|max:1000',
+        ]);
+
+        $requirementRequest->update([
+            'status'                     => 'clarification_needed',
+            'clarification_remarks'      => $validated['clarification_remarks'],
+            'clarification_requested_by' => auth()->id(),
+            'clarification_requested_at' => now(),
+        ]);
+
+        RequirementRequest::logHistory($requirementRequest->id, auth()->id(), 'clarification_requested', null, $validated['clarification_remarks']);
+        event(new RequestClarificationRequested($requirementRequest));
+
+        if ($isAjax) {
+            return response()->json([
+                'success'  => true,
+                'message'  => 'Request sent back for clarification.',
+                'redirect' => route('dashboard'),
+            ]);
+        }
+
+        return back()->with('success', 'Request sent back for clarification.');
+    }
+
+    /**
+     * Check if a user is the effective approver for the request's category in the creator's group.
+     * Checks category-specific override first, falls back to group_approver_id.
+     */
+    private function isGroupApproverForRequest(User $user, RequirementRequest $request): bool
+    {
+        $group = UserGroup::where('type', 'fmo')
+            ->whereHas('members', fn($q) => $q->where('users.id', $request->created_by))
+            ->with('categoryApprovers')
+            ->first();
+
+        if (!$group) {
+            return false;
+        }
+
+        return $group->getApproverForCategory($request->category_id) === $user->id;
     }
 
     /**
@@ -217,18 +418,25 @@ class RequirementRequestController extends Controller
             // PO Admin can only view approved, assigned, in_progress, or completed requests
             $canView = in_array($request->status, ['approved', 'assigned', 'in_progress', 'completed']);
         } elseif ($user->isFmoUser()) {
-            // FMO users can only view requests they created
-            $canView = $request->created_by === $user->id;
+            // FMO users can view requests they created or that belong to their group
+            $memberIds = $user->getGroupMemberIds();
+            $canView = in_array($request->created_by, $memberIds);
+
+            // Group approver can also view group_pending requests from their group
+            if (!$canView && $request->isGroupPending()) {
+                $canView = $this->isGroupApproverForRequest($user, $request);
+            }
         } elseif ($user->isPoUser()) {
-            // PO users can only view requests assigned to them
-            $canView = $request->assigned_to === $user->id;
+            // PO users can view requests assigned to them or to their group
+            $memberIds = $user->getGroupMemberIds();
+            $canView = in_array($request->assigned_to, $memberIds);
         }
 
         if (!$canView) {
             abort(403, 'You are not authorized to view this request.');
         }
 
-        $request->load('creator', 'approver', 'assignee', 'assigner', 'clarificationRequester', 'history.user', 'attachments', 'nudges.sender', 'nudges.target');
+        $request->load('category', 'creator', 'approver', 'assignee', 'assigner', 'clarificationRequester', 'history.user', 'attachments', 'nudges.sender', 'nudges.target', 'items');
 
         // Get PO users for assignment dropdown (if user is PO Admin or Super Admin)
         $poUsers = collect();
@@ -243,19 +451,29 @@ class RequirementRequestController extends Controller
     {
         $user = auth()->user();
 
-        // FMO User can edit their own pending requests
-        if ($user->isFmoUser() && $request->created_by === $user->id && $request->canBeEditedByCreator()) {
-            return view('requests.edit', compact('request'));
+        $categories = Category::active()->get();
+
+        // FMO User can edit their own or group members' pending requests
+        if ($user->isFmoUser()) {
+            $memberIds = $user->getGroupMemberIds();
+            if (in_array($request->created_by, $memberIds) && $request->canBeEditedByCreator()) {
+                return view('requests.edit', compact('request', 'categories'));
+            }
+            // Group approver can edit group_pending or pending (unapproved) requests from their group
+            if (($request->isGroupPending() || ($request->isPending() && !$request->approved_by))
+                && $this->isGroupApproverForRequest($user, $request)) {
+                return view('requests.edit', compact('request', 'categories'));
+            }
         }
 
         // FMO Admin can edit any pending request
         if ($user->isFmoAdmin() && $request->canBeEditedByFmoAdmin()) {
-            return view('requests.edit', compact('request'));
+            return view('requests.edit', compact('request', 'categories'));
         }
 
         // Super Admin has full access
         if ($user->isSuperAdmin() && $request->isPending()) {
-            return view('requests.edit', compact('request'));
+            return view('requests.edit', compact('request', 'categories'));
         }
 
         abort(403, 'You cannot edit this request.');
@@ -267,8 +485,14 @@ class RequirementRequestController extends Controller
 
         // Authorization check
         $canEdit = false;
-        if ($user->isFmoUser() && $requirementRequest->created_by === $user->id && $requirementRequest->canBeEditedByCreator()) {
-            $canEdit = true;
+        if ($user->isFmoUser()) {
+            $memberIds = $user->getGroupMemberIds();
+            if (in_array($requirementRequest->created_by, $memberIds) && $requirementRequest->canBeEditedByCreator()) {
+                $canEdit = true;
+            } elseif (($requirementRequest->isGroupPending() || ($requirementRequest->isPending() && !$requirementRequest->approved_by))
+                && $this->isGroupApproverForRequest($user, $requirementRequest)) {
+                $canEdit = true;
+            }
         } elseif (($user->isFmoAdmin() || $user->isSuperAdmin()) && $requirementRequest->canBeEditedByFmoAdmin()) {
             $canEdit = true;
         }
@@ -278,40 +502,42 @@ class RequirementRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'item' => 'required|string|max:255',
-            'dimensions' => 'nullable|string|max:255',
-            'qty' => 'required|integer|min:1',
-            'location' => 'required|string|max:255',
-            'remarks' => 'nullable|string',
+            'category_id'          => 'required|exists:categories,id',
+            'items'                => 'required|array|min:1',
+            'items.*.item'         => 'required|string|max:255',
+            'items.*.qty'          => 'required|integer|min:1',
+            'items.*.specifications' => 'nullable|string|max:255',
+            'location'             => 'required|string|max:255',
+            'priority'             => 'required|in:normal,urgent',
+            'remarks'              => 'nullable|string',
         ]);
 
-        // Track changes for history
-        $changes = [];
-        $trackFields = ['item', 'dimensions', 'qty', 'location', 'remarks'];
-
-        foreach ($trackFields as $field) {
-            $oldValue = $requirementRequest->{$field};
-            $newValue = $validated[$field] ?? null;
-
-            if ($oldValue != $newValue) {
-                $changes[$field] = [
-                    'old' => $oldValue,
-                    'new' => $newValue,
-                ];
+        DB::transaction(function () use ($requirementRequest, $validated) {
+            $changes = [];
+            if ($requirementRequest->priority !== $validated['priority']) {
+                $changes['priority'] = ['old' => $requirementRequest->priority, 'new' => $validated['priority']];
             }
-        }
 
-        // Only log if there were actual changes
-        if (!empty($changes)) {
-            $requirementRequest->update($validated);
+            $requirementRequest->update([
+                'category_id' => $validated['category_id'],
+                'location'    => $validated['location'],
+                'remarks'     => $validated['remarks'] ?? null,
+                'priority'    => $validated['priority'],
+            ]);
 
-            RequirementRequest::logHistory(
-                $requirementRequest->id,
-                auth()->id(),
-                'edited',
-                $changes
-            );
-        }
+            $requirementRequest->items()->delete();
+            foreach ($validated['items'] as $sortOrder => $itemData) {
+                RequirementRequestItem::create([
+                    'requirement_request_id' => $requirementRequest->id,
+                    'item'                   => $itemData['item'],
+                    'qty'                    => (int) $itemData['qty'],
+                    'specifications'         => $itemData['specifications'] ?? null,
+                    'sort_order'             => $sortOrder,
+                ]);
+            }
+
+            RequirementRequest::logHistory($requirementRequest->id, auth()->id(), 'edited', $changes ?: null);
+        });
 
         return redirect()->route('requests.show', $requirementRequest)
             ->with('success', 'Request updated successfully.');
@@ -531,7 +757,7 @@ class RequirementRequestController extends Controller
             abort(403, 'You can only cancel your own requests.');
         }
 
-        if (!$requirementRequest->isPending() && !$requirementRequest->needsClarification()) {
+        if (!$requirementRequest->isGroupPending() && !$requirementRequest->isPending() && !$requirementRequest->needsClarification()) {
             if ($isAjax) {
                 return response()->json([
                     'success' => false,
@@ -685,45 +911,48 @@ class RequirementRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'item' => 'required|string|max:255',
-            'dimensions' => 'nullable|string|max:255',
-            'qty' => 'required|integer|min:1',
-            'location' => 'required|string|max:255',
-            'remarks' => 'nullable|string',
+            'items'                => 'required|array|min:1',
+            'items.*.item'         => 'required|string|max:255',
+            'items.*.qty'          => 'required|integer|min:1',
+            'items.*.specifications' => 'nullable|string|max:255',
+            'location'             => 'required|string|max:255',
+            'remarks'              => 'nullable|string',
         ]);
 
-        // Track changes for history
-        $changes = [];
-        $trackFields = ['item', 'dimensions', 'qty', 'location', 'remarks'];
-
-        foreach ($trackFields as $field) {
-            $oldValue = $requirementRequest->{$field};
-            $newValue = $validated[$field] ?? null;
-
-            if ($oldValue != $newValue) {
-                $changes[$field] = [
-                    'old' => $oldValue,
-                    'new' => $newValue,
-                ];
+        DB::transaction(function () use ($requirementRequest, $validated) {
+            // If clarification was requested by a group approver (not FMO admin), go back to group_pending
+            $clarificationRequesterId = $requirementRequest->clarification_requested_by;
+            $resubmitStatus = 'pending';
+            if ($clarificationRequesterId) {
+                $clarifier = User::find($clarificationRequesterId);
+                if ($clarifier && $this->isGroupApproverForRequest($clarifier, $requirementRequest)) {
+                    $resubmitStatus = 'group_pending';
+                }
             }
-        }
 
-        // Update request and change status back to pending
-        $requirementRequest->update(array_merge($validated, [
-            'status' => 'pending',
-            'clarification_remarks' => null,
-            'clarification_requested_by' => null,
-            'clarification_requested_at' => null,
-        ]));
+            $requirementRequest->update([
+                'location'                   => $validated['location'],
+                'remarks'                    => $validated['remarks'] ?? null,
+                'status'                     => $resubmitStatus,
+                'clarification_remarks'      => null,
+                'clarification_requested_by' => null,
+                'clarification_requested_at' => null,
+            ]);
 
-        RequirementRequest::logHistory(
-            $requirementRequest->id,
-            auth()->id(),
-            'resubmitted',
-            !empty($changes) ? $changes : null
-        );
+            $requirementRequest->items()->delete();
+            foreach ($validated['items'] as $sortOrder => $itemData) {
+                RequirementRequestItem::create([
+                    'requirement_request_id' => $requirementRequest->id,
+                    'item'                   => $itemData['item'],
+                    'qty'                    => (int) $itemData['qty'],
+                    'specifications'         => $itemData['specifications'] ?? null,
+                    'sort_order'             => $sortOrder,
+                ]);
+            }
 
-        event(new RequestResubmitted($requirementRequest));
+            RequirementRequest::logHistory($requirementRequest->id, auth()->id(), 'resubmitted');
+            event(new RequestResubmitted($requirementRequest));
+        });
 
         if ($isAjax) {
             return response()->json([

@@ -8,31 +8,51 @@
     <link rel="icon" type="image/png" href="/image.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>[x-cloak]{display:none!important}</style>
+    @stack('head')
 </head>
 <body class="bg-gray-300 min-h-screen">
-    <nav class="bg-black shadow-lg sticky top-0 z-50">
+    <nav class="bg-black shadow-lg sticky top-0 z-50" x-data="{ mobileOpen: false }">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
+                <!-- Logo + desktop nav links -->
                 <div class="flex items-center space-x-6">
                     <a href="{{ route('dashboard') }}" class="flex items-center gap-1">
                         <img src="/aes-logo.png" alt="AES Logo" class="h-10 w-auto">
                         <img src="/image.png" alt="FMO2PO" class="h-10 w-auto">
                     </a>
                     @auth
-                        <a href="{{ route('dashboard') }}" class="text-gray-300 hover:text-white">
-                            Dashboard
-                        </a>
-                        @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin() || auth()->user()->isPoAdmin())
-                            <a href="{{ route('reports.index') }}" class="text-gray-300 hover:text-white">
-                                Reports
+                        <div class="hidden md:flex items-center space-x-6">
+                            <a href="{{ route('dashboard') }}" class="text-gray-300 hover:text-white">
+                                Dashboard
                             </a>
-                            <a href="{{ route('admin.users.index') }}" class="text-gray-300 hover:text-white">
-                                Manage Users
-                            </a>
-                        @endif
+                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin() || auth()->user()->isPoAdmin())
+                                <a href="{{ route('reports.index') }}" class="text-gray-300 hover:text-white">
+                                    Reports
+                                </a>
+                                <a href="{{ route('admin.users.index') }}" class="text-gray-300 hover:text-white">
+                                    Manage Users
+                                </a>
+                            @endif
+                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin())
+                                <a href="{{ route('admin.categories.index') }}" class="text-gray-300 hover:text-white">
+                                    Categories
+                                </a>
+                                <a href="{{ route('admin.fmo-groups.index') }}" class="text-gray-300 hover:text-white">
+                                    FMO Groups
+                                </a>
+                            @endif
+                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isPoAdmin())
+                                <a href="{{ route('admin.po-groups.index') }}" class="text-gray-300 hover:text-white">
+                                    PO Groups
+                                </a>
+                            @endif
+                        </div>
                     @endauth
                 </div>
-                <div class="flex items-center space-x-4">
+
+                <!-- Right side: bell + user + hamburger -->
+                <div class="flex items-center space-x-2">
                     @auth
                         <!-- Notification Bell -->
                         @if(auth()->user()->isPoUser() || auth()->user()->isPoAdmin() || auth()->user()->isSuperAdmin() || auth()->user()->isFmoUser() || auth()->user()->isFmoAdmin())
@@ -54,7 +74,7 @@
                                      x-transition:leave="transition ease-in duration-75"
                                      x-transition:leave-start="transform opacity-100 scale-100"
                                      x-transition:leave-end="transform opacity-0 scale-95"
-                                     class="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                                     class="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
                                     <div class="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
                                         <p class="text-sm font-semibold text-gray-900" id="nudge-dropdown-title">Notifications</p>
                                         <span id="nudge-dropdown-count" class="text-xs text-gray-500 font-medium"></span>
@@ -66,10 +86,10 @@
                             </div>
                         @endif
 
-                        <!-- User Dropdown -->
-                        <div class="relative" x-data="{ open: false }">
+                        <!-- User Dropdown (hidden on mobile, shown via hamburger) -->
+                        <div class="relative hidden md:block" x-data="{ open: false }">
                             <button @click="open = !open" @click.away="open = false"
-                                    class="flex items-center space-x-3 focus:outline-none hover:bg-gray-800 rounded-lg px-3 py-2 transition">
+                                    class="flex items-center space-x-2 focus:outline-none hover:bg-gray-800 rounded-lg px-3 py-2 transition">
                                 @if(auth()->user()->avatar)
                                     <img src="{{ auth()->user()->avatar }}" alt="Avatar" class="w-8 h-8 rounded-full">
                                 @else
@@ -77,7 +97,7 @@
                                         <span class="text-indigo-600 font-medium text-sm">{{ substr(auth()->user()->name, 0, 1) }}</span>
                                     </div>
                                 @endif
-                                <span class="text-white">{{ auth()->user()->name }}</span>
+                                <span class="text-white text-sm">{{ auth()->user()->name }}</span>
                                 <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                                 </svg>
@@ -96,7 +116,7 @@
                                 <!-- Role Badge -->
                                 <div class="px-4 py-2 border-b border-gray-100">
                                     <p class="text-xs text-gray-500">Signed in as</p>
-                                    <p class="font-medium text-gray-900">{{ auth()->user()->email }}</p>
+                                    <p class="font-medium text-gray-900 text-sm truncate">{{ auth()->user()->email }}</p>
                                     <span class="mt-1 inline-block px-2 py-1 text-xs rounded-full
                                         @if(auth()->user()->role === 'super_admin') bg-red-100 text-red-800
                                         @elseif(auth()->user()->role === 'fmo_user') bg-blue-100 text-blue-800
@@ -131,10 +151,105 @@
                                 </form>
                             </div>
                         </div>
+
+                        <!-- Hamburger button (mobile only) -->
+                        <button @click="mobileOpen = !mobileOpen"
+                                class="md:hidden flex items-center focus:outline-none hover:bg-gray-800 rounded-lg p-2 transition">
+                            <svg x-show="!mobileOpen" class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            </svg>
+                            <svg x-show="mobileOpen" class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
                     @endauth
                 </div>
             </div>
         </div>
+
+        <!-- Mobile menu -->
+        @auth
+        <div x-show="mobileOpen"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 -translate-y-2"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-100"
+             x-transition:leave-start="opacity-100 translate-y-0"
+             x-transition:leave-end="opacity-0 -translate-y-2"
+             class="md:hidden border-t border-gray-700 bg-black pb-3">
+
+            <!-- User info -->
+            <div class="px-4 py-3 border-b border-gray-700">
+                <div class="flex items-center gap-3">
+                    @if(auth()->user()->avatar)
+                        <img src="{{ auth()->user()->avatar }}" alt="Avatar" class="w-9 h-9 rounded-full">
+                    @else
+                        <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center">
+                            <span class="text-indigo-600 font-medium">{{ substr(auth()->user()->name, 0, 1) }}</span>
+                        </div>
+                    @endif
+                    <div>
+                        <p class="text-white font-medium text-sm">{{ auth()->user()->name }}</p>
+                        <p class="text-gray-400 text-xs truncate">{{ auth()->user()->email }}</p>
+                    </div>
+                    <span class="ml-auto inline-block px-2 py-1 text-xs rounded-full
+                        @if(auth()->user()->role === 'super_admin') bg-red-100 text-red-800
+                        @elseif(auth()->user()->role === 'fmo_user') bg-blue-100 text-blue-800
+                        @elseif(auth()->user()->role === 'fmo_admin') bg-green-100 text-green-800
+                        @elseif(auth()->user()->role === 'po_admin') bg-purple-100 text-purple-800
+                        @else bg-orange-100 text-orange-800
+                        @endif">
+                        {{ str_replace('_', ' ', ucwords(auth()->user()->role)) }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Nav links -->
+            <div class="px-2 pt-2 space-y-1">
+                <a href="{{ route('dashboard') }}" @click="mobileOpen = false"
+                   class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                    Dashboard
+                </a>
+                @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin() || auth()->user()->isPoAdmin())
+                    <a href="{{ route('reports.index') }}" @click="mobileOpen = false"
+                       class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        Reports
+                    </a>
+                    <a href="{{ route('admin.users.index') }}" @click="mobileOpen = false"
+                       class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        Manage Users
+                    </a>
+                @endif
+                @if(auth()->user()->isSuperAdmin() || auth()->user()->isFmoAdmin())
+                    <a href="{{ route('admin.categories.index') }}" @click="mobileOpen = false"
+                       class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        Categories
+                    </a>
+                    <a href="{{ route('admin.fmo-groups.index') }}" @click="mobileOpen = false"
+                       class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        FMO Groups
+                    </a>
+                @endif
+                @if(auth()->user()->isSuperAdmin() || auth()->user()->isPoAdmin())
+                    <a href="{{ route('admin.po-groups.index') }}" @click="mobileOpen = false"
+                       class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        PO Groups
+                    </a>
+                @endif
+                <a href="{{ route('settings.index') }}" @click="mobileOpen = false"
+                   class="block px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                    Settings
+                </a>
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit"
+                            class="w-full text-left px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition">
+                        Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+        @endauth
     </nav>
 
     <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -437,5 +552,6 @@
         });
     </script>
     @endauth
+    @stack('scripts')
 </body>
 </html>

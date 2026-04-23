@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="max-w-2xl mx-auto">
-    <div class="flex justify-between items-center mb-6">
+    <div class="flex flex-wrap gap-3 justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-gray-900">Add New User</h1>
         <a href="{{ route('admin.users.index') }}" class="text-indigo-600 hover:text-indigo-900">
             &larr; Back to Users

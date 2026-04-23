@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="max-w-2xl mx-auto">
-    <div class="flex justify-between items-center mb-6">
+    <div class="flex flex-wrap gap-3 justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-gray-900">Import Users from CSV</h1>
         <a href="{{ route('admin.users.index') }}" class="text-indigo-600 hover:text-indigo-900">
             &larr; Back to Users
@@ -27,7 +27,7 @@
                 @enderror
             </div>
 
-            <div class="flex justify-between items-center">
+            <div class="flex flex-wrap justify-between items-center gap-3">
                 <a href="{{ route('admin.users.import.template') }}"
                    class="text-indigo-600 hover:text-indigo-900 text-sm">
                     Download CSV Template

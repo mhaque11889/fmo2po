@@ -108,8 +108,13 @@
                 @forelse($assignedRequests as $request)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {{ $request->display_item }}
+                            @if($request->priority === 'urgent')
+                                <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             @php

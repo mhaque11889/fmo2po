@@ -89,9 +89,9 @@
                         </a>
                         @if(app()->environment('local'))
                             <div>
-                                <a href="{{ route('login') }}" class="inline-block text-sm text-indigo-500 hover:text-indigo-700 underline underline-offset-2">
+                                {{-- <a href="{{ route('login') }}" class="inline-block text-sm text-indigo-500 hover:text-indigo-700 underline underline-offset-2">
                                     Dev login (local only)
-                                </a>
+                                </a> --}}
                             </div>
                         @endif
                     </div>

@@ -11,6 +11,10 @@
         </a>
     </div>
 
+    @if($isGroupView)
+        <p class="mt-2 text-sm text-indigo-600">Showing requests from you and your group members.</p>
+    @endif
+
     <!-- Filter Tabs -->
     <div class="mt-4 flex flex-wrap gap-2">
         <a href="{{ route('requests.my') }}"
@@ -49,10 +53,14 @@
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                @if($isGroupView)
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted By</th>
+                @endif
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -61,10 +69,26 @@
             @forelse($requests as $request)
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">#{{ $request->id }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->item }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->qty }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->category->name ?? '—' }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                        {{ $request->display_item }}
+                        @if($request->priority === 'urgent')
+                            <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded">Urgent</span>
+                        @endif
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->total_qty }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $request->location }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $request->created_at->format('M d, Y') }}</td>
+                    @if($isGroupView)
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            @if($request->created_by === auth()->id())
+                                <span class="text-gray-400">You</span>
+                            @else
+                                <span class="text-gray-900">{{ $request->creator->name }}</span>
+                                <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700">Group</span>
+                            @endif
+                        </td>
+                    @endif
                     <td class="px-6 py-4 whitespace-nowrap">
                         @php
                             $statusColors = [
@@ -91,7 +115,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                    <td colspan="{{ $isGroupView ? 8 : 7 }}" class="px-6 py-4 text-center text-gray-500">
                         No requests found
                     </td>
                 </tr>

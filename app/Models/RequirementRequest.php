@@ -12,11 +12,10 @@ class RequirementRequest extends Model
     use HasFactory;
     protected $fillable = [
         'created_by',
-        'item',
-        'dimensions',
-        'qty',
+        'category_id',
         'location',
         'remarks',
+        'priority',
     ];
 
     protected $casts = [
@@ -26,7 +25,13 @@ class RequirementRequest extends Model
         'completed_at' => 'datetime',
         'completed_seen_at' => 'datetime',
         'clarification_requested_at' => 'datetime',
+        'group_approved_at' => 'datetime',
     ];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
 
     public function creator(): BelongsTo
     {
@@ -53,6 +58,11 @@ class RequirementRequest extends Model
         return $this->belongsTo(User::class, 'clarification_requested_by');
     }
 
+    public function groupApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'group_approved_by');
+    }
+
     public function history(): HasMany
     {
         return $this->hasMany(RequestHistory::class)->orderBy('created_at', 'desc');
@@ -66,6 +76,38 @@ class RequirementRequest extends Model
     public function nudges(): HasMany
     {
         return $this->hasMany(RequestNudge::class)->orderBy('created_at', 'desc');
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(RequirementRequestItem::class)->orderBy('sort_order');
+    }
+
+    public function getDisplayItemAttribute(): string
+    {
+        if ($this->relationLoaded('items') && $this->items->isNotEmpty()) {
+            $parts = $this->items->map(fn($i) => "{$i->item} x{$i->qty}")->implode(', ');
+            return strlen($parts) > 80 ? substr($parts, 0, 77) . '...' : $parts;
+        }
+        return '';
+    }
+
+    public function getTotalQtyAttribute(): int
+    {
+        if ($this->relationLoaded('items') && $this->items->isNotEmpty()) {
+            return $this->items->sum('qty');
+        }
+        return 0;
+    }
+
+    public function isUrgent(): bool
+    {
+        return $this->priority === 'urgent';
+    }
+
+    public function isGroupPending(): bool
+    {
+        return $this->status === 'group_pending';
     }
 
     public function isPending(): bool
@@ -110,7 +152,7 @@ class RequirementRequest extends Model
 
     public function canBeEditedByCreator(): bool
     {
-        return $this->isPending() || $this->needsClarification();
+        return $this->isGroupPending() || $this->isPending() || $this->needsClarification();
     }
 
     public function canBeEditedByFmoAdmin(): bool
@@ -153,14 +195,16 @@ class RequirementRequest extends Model
         $ccEmails = $fmoAdmins ?: '';
 
         // Construct email subject
-        $subject = "Clarification Request - Request #{$this->id}: {$this->item}";
+        $this->loadMissing('items');
+        $subjectItem = $this->display_item ?: "Request #{$this->id}";
+        $subject = "Clarification Request - Request #{$this->id}: {$subjectItem}";
 
         // Format email body with request details
-        $dimensions = $this->dimensions ?: 'N/A';
         $remarks = $this->remarks ?: 'N/A';
 
         // Get human-readable status
         $statusMap = [
+            'group_pending' => 'Pending Group Approval',
             'pending' => 'Pending',
             'approved' => 'Approved',
             'assigned' => 'Assigned',
@@ -173,9 +217,15 @@ class RequirementRequest extends Model
         $statusDisplay = $statusMap[$this->status] ?? ucfirst($this->status);
 
         $body = "Request ID: {$this->id}\n";
-        $body .= "Item: {$this->item}\n";
-        $body .= "Quantity: {$this->qty}\n";
-        $body .= "Dimensions: {$dimensions}\n";
+
+        if ($this->items->isNotEmpty()) {
+            $body .= "Items:\n";
+            foreach ($this->items as $idx => $lineItem) {
+                $dim = $lineItem->specifications ?: 'N/A';
+                $body .= "  " . ($idx + 1) . ". {$lineItem->item} | Qty: {$lineItem->qty} | Specifications: {$dim}\n";
+            }
+        }
+
         $body .= "Location: {$this->location}\n";
         $body .= "Remarks: {$remarks}\n";
         $body .= "Current Status: {$statusDisplay}\n";

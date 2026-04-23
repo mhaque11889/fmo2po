@@ -197,7 +197,8 @@
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <!-- Status Banner -->
         <div class="px-6 py-4
-            @if($request->status === 'pending') bg-yellow-50 border-b border-yellow-200
+            @if($request->status === 'group_pending') bg-indigo-50 border-b border-indigo-200
+            @elseif($request->status === 'pending') bg-yellow-50 border-b border-yellow-200
             @elseif($request->status === 'approved') bg-blue-50 border-b border-blue-200
             @elseif($request->status === 'assigned') bg-purple-50 border-b border-purple-200
             @elseif($request->status === 'in_progress') bg-orange-50 border-b border-orange-200
@@ -208,7 +209,8 @@
             @endif">
             <div class="flex items-center justify-between">
                 <span class="px-3 py-1 text-sm font-semibold rounded-full
-                    @if($request->status === 'pending') bg-yellow-100 text-yellow-800
+                    @if($request->status === 'group_pending') bg-indigo-100 text-indigo-800
+                    @elseif($request->status === 'pending') bg-yellow-100 text-yellow-800
                     @elseif($request->status === 'approved') bg-blue-100 text-blue-800
                     @elseif($request->status === 'assigned') bg-purple-100 text-purple-800
                     @elseif($request->status === 'in_progress') bg-orange-100 text-orange-800
@@ -217,11 +219,20 @@
                     @elseif($request->status === 'clarification_needed') bg-amber-100 text-amber-800
                     @else bg-red-100 text-red-800
                     @endif">
-                    {{ ucfirst(str_replace('_', ' ', $request->status)) }}
+                    @if($request->status === 'group_pending') Pending Group Approval
+                    @else {{ ucfirst(str_replace('_', ' ', $request->status)) }}
+                    @endif
                 </span>
-                <span class="text-sm text-gray-500">
-                    Created {{ $request->created_at ? $request->created_at->format('M d, Y \a\t h:i A') : 'N/A' }}
-                </span>
+                <div class="flex items-center gap-3">
+                    @if($request->priority === 'urgent')
+                        <span class="px-2.5 py-1 text-xs font-bold bg-red-100 text-red-700 rounded-full border border-red-300 uppercase tracking-wide">
+                            ⚠ Urgent
+                        </span>
+                    @endif
+                    <span class="text-sm text-gray-500">
+                        Created {{ $request->created_at ? $request->created_at->format('M d, Y \a\t h:i A') : 'N/A' }}
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -264,19 +275,47 @@
         <!-- Request Details -->
         <div class="p-6">
             <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <dt class="text-sm font-medium text-gray-500">Item</dt>
-                    <dd class="mt-1 text-lg text-gray-900">{{ $request->item }}</dd>
+                @if($request->items->isNotEmpty())
+                <div class="md:col-span-2">
+                    <dt class="text-sm font-medium text-gray-500 mb-2">Items</dt>
+                    <dd class="mt-1">
+                        <div class="overflow-x-auto border border-gray-200 rounded-md">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8">#</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">Qty</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-36">Specifications</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    @foreach($request->items as $i => $lineItem)
+                                        <tr class="{{ $i % 2 === 0 ? 'bg-white' : 'bg-gray-50' }}">
+                                            <td class="px-3 py-2 text-gray-500">{{ $i + 1 }}</td>
+                                            <td class="px-3 py-2 text-gray-900">{{ $lineItem->item }}</td>
+                                            <td class="px-3 py-2 text-gray-900">{{ $lineItem->qty }}</td>
+                                            <td class="px-3 py-2 text-gray-500">{{ $lineItem->specifications ?? '-' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </dd>
                 </div>
+                @endif
 
                 <div>
-                    <dt class="text-sm font-medium text-gray-500">Quantity</dt>
-                    <dd class="mt-1 text-lg text-gray-900">{{ $request->qty }}</dd>
-                </div>
-
-                <div>
-                    <dt class="text-sm font-medium text-gray-500">Dimensions</dt>
-                    <dd class="mt-1 text-lg text-gray-900">{{ $request->dimensions ?? '-' }}</dd>
+                    <dt class="text-sm font-medium text-gray-500">Category</dt>
+                    <dd class="mt-1 text-lg text-gray-900">
+                        @if($request->category)
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
+                                {{ $request->category->name }}
+                            </span>
+                        @else
+                            <span class="text-gray-400">—</span>
+                        @endif
+                    </dd>
                 </div>
 
                 <div>
@@ -511,32 +550,96 @@
 
                 <form id="resubmit-form" action="{{ route('requests.resubmit', $request) }}" method="POST" class="space-y-4">
                     @csrf
+
+                    <!-- Line Items Table -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-sm font-medium text-gray-700">
+                                Items <span class="text-red-500">*</span>
+                            </label>
+                            <button type="button" id="resubmit-add-item-btn"
+                                class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition">
+                                + Add Item
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto border border-gray-200 rounded-md">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8">#</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item Name *</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-24">Qty *</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-40">Specifications</th>
+                                        <th class="px-3 py-2 w-10"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resubmit-items-tbody">
+                                    @forelse($request->items as $idx => $lineItem)
+                                        <tr class="resubmit-item-row" data-index="{{ $idx }}">
+                                            <td class="px-3 py-2 text-sm text-gray-500 row-num">{{ $idx + 1 }}</td>
+                                            <td class="px-3 py-2">
+                                                <input type="text" name="items[{{ $idx }}][item]" required
+                                                    value="{{ old('items.' . $idx . '.item', $lineItem->item) }}"
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <input type="number" name="items[{{ $idx }}][qty]" min="1" required
+                                                    value="{{ old('items.' . $idx . '.qty', $lineItem->qty) }}"
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <input type="text" name="items[{{ $idx }}][specifications]"
+                                                    value="{{ old('items.' . $idx . '.specifications', $lineItem->specifications) }}"
+                                                    placeholder="e.g. 10x20 cm"
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <button type="button" class="resubmit-remove-row text-gray-300 hover:text-red-500 transition">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr class="resubmit-item-row" data-index="0">
+                                            <td class="px-3 py-2 text-sm text-gray-500 row-num">1</td>
+                                            <td class="px-3 py-2">
+                                                <input type="text" name="items[0][item]" required
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <input type="number" name="items[0][qty]" min="1" value="1" required
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <input type="text" name="items[0][specifications]" placeholder="e.g. 10x20 cm"
+                                                    class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <button type="button" class="resubmit-remove-row text-gray-300 hover:text-red-500 transition">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                        <p id="resubmit-items-min-error" class="mt-1 text-sm text-red-500 hidden">At least one item is required.</p>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label for="item" class="block text-sm font-medium text-gray-700">Item *</label>
-                            <input type="text" name="item" id="item" value="{{ old('item', $request->item) }}" required
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label for="qty" class="block text-sm font-medium text-gray-700">Quantity *</label>
-                                <input type="number" name="qty" id="qty" value="{{ old('qty', $request->qty) }}" min="1" required
-                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label for="dimensions" class="block text-sm font-medium text-gray-700">Dimensions</label>
-                                <input type="text" name="dimensions" id="dimensions" value="{{ old('dimensions', $request->dimensions) }}"
-                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                        </div>
-                        <div>
-                            <label for="location" class="block text-sm font-medium text-gray-700">Location *</label>
-                            <input type="text" name="location" id="location" value="{{ old('location', $request->location) }}" required
+                            <label for="resubmit_location" class="block text-sm font-medium text-gray-700">Location *</label>
+                            <input type="text" name="location" id="resubmit_location" value="{{ old('location', $request->location) }}" required
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
                         <div class="md:col-span-2">
-                            <label for="remarks" class="block text-sm font-medium text-gray-700">Remarks</label>
-                            <textarea name="remarks" id="remarks" rows="3"
+                            <label for="resubmit_remarks" class="block text-sm font-medium text-gray-700">Remarks</label>
+                            <textarea name="remarks" id="resubmit_remarks" rows="3"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('remarks', $request->remarks) }}</textarea>
                         </div>
                     </div>
@@ -546,6 +649,50 @@
                         </button>
                     </div>
                 </form>
+
+                <script>
+                (function() {
+                    const tbody = document.getElementById('resubmit-items-tbody');
+                    const addBtn = document.getElementById('resubmit-add-item-btn');
+                    let rowCount = {{ $request->items->count() > 0 ? $request->items->count() : 1 }};
+
+                    function buildRow(idx) {
+                        const tr = document.createElement('tr');
+                        tr.className = 'resubmit-item-row';
+                        tr.dataset.index = idx;
+                        tr.innerHTML = `
+                            <td class="px-3 py-2 text-sm text-gray-500 row-num"></td>
+                            <td class="px-3 py-2"><input type="text" name="items[${idx}][item]" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></td>
+                            <td class="px-3 py-2"><input type="number" name="items[${idx}][qty]" min="1" value="1" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></td>
+                            <td class="px-3 py-2"><input type="text" name="items[${idx}][specifications]" placeholder="e.g. 10x20 cm" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></td>
+                            <td class="px-3 py-2"><button type="button" class="resubmit-remove-row text-gray-300 hover:text-red-500 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></td>`;
+                        return tr;
+                    }
+
+                    function renumber() {
+                        tbody.querySelectorAll('.resubmit-item-row').forEach((r, i) => r.querySelector('.row-num').textContent = i + 1);
+                    }
+
+                    addBtn.addEventListener('click', function() {
+                        const tr = buildRow(rowCount++);
+                        tbody.appendChild(tr);
+                        renumber();
+                        tr.querySelector('input[type="text"]').focus();
+                    });
+
+                    tbody.addEventListener('click', function(e) {
+                        const btn = e.target.closest('.resubmit-remove-row');
+                        if (!btn) return;
+                        if (tbody.querySelectorAll('.resubmit-item-row').length <= 1) {
+                            document.getElementById('resubmit-items-min-error').classList.remove('hidden');
+                            return;
+                        }
+                        document.getElementById('resubmit-items-min-error').classList.add('hidden');
+                        btn.closest('.resubmit-item-row').remove();
+                        renumber();
+                    });
+                })();
+                </script>
                 <form id="cancel-clarification-form" action="{{ route('requests.cancel', $request) }}" method="POST" class="mt-3">
                     @csrf
                     <button type="submit" onclick="return confirm('Are you sure you want to cancel this request?')"
@@ -690,6 +837,100 @@
                 }
             });
             </script>
+        @endif
+
+        <!-- Actions for Group Approver (group_pending or pending-but-unapproved requests) -->
+        @php
+            // Show approver actions if user is the effective approver for this request's category
+            $isGroupApprover = false;
+            if ($request->isGroupPending() || ($request->isPending() && !$request->approved_by)) {
+                $approverGroup = \App\Models\UserGroup::where('type', 'fmo')
+                    ->whereHas('members', fn($q) => $q->where('users.id', $request->created_by))
+                    ->with('categoryApprovers')
+                    ->first();
+                if ($approverGroup) {
+                    $isGroupApprover = $approverGroup->getApproverForCategory($request->category_id) === auth()->id();
+                }
+            }
+        @endphp
+        @if($isGroupApprover)
+            <div class="border-t border-gray-200 p-6 bg-blue-50">
+                <h4 class="text-sm font-semibold text-blue-800 mb-3">Group Approval Required</h4>
+                <div class="flex space-x-3">
+                    <form action="{{ route('requests.group-approve', $request) }}" method="POST" id="group-approve-form">
+                        @csrf
+                        <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition transform hover:scale-105">
+                            Approve &amp; Forward to FMO Admin
+                        </button>
+                    </form>
+                    <a href="{{ route('requests.edit', $request) }}"
+                        class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition text-sm font-medium inline-flex items-center">
+                        Edit Request
+                    </a>
+                    <button type="button" onclick="document.getElementById('group-reject-modal').classList.remove('hidden')"
+                        class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition transform hover:scale-105">
+                        Reject
+                    </button>
+                    <button type="button" onclick="document.getElementById('group-clarification-modal').classList.remove('hidden')"
+                        class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition transform hover:scale-105">
+                        Need Clarification
+                    </button>
+                </div>
+            </div>
+
+            <!-- Group Clarification Modal -->
+            <div id="group-clarification-modal" class="fixed inset-0 z-50 hidden" aria-modal="true">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('group-clarification-modal').classList.add('hidden')"></div>
+                <div class="fixed inset-0 z-10 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Request Clarification</h3>
+                            <p class="text-sm text-gray-600 mb-4">Provide details about what clarification is needed from the initiator.</p>
+                            <form action="{{ route('requests.group-clarification', $request) }}" method="POST">
+                                @csrf
+                                <div class="mb-4">
+                                    <label for="group_clarification_remarks" class="block text-sm font-medium text-gray-700 mb-1">Remarks *</label>
+                                    <textarea name="clarification_remarks" id="group_clarification_remarks" rows="4" required
+                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                        placeholder="What clarification is needed?"></textarea>
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" onclick="document.getElementById('group-clarification-modal').classList.add('hidden')"
+                                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">Send for Clarification</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group Reject Modal -->
+            <div id="group-reject-modal" class="fixed inset-0 z-50 hidden" aria-modal="true">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('group-reject-modal').classList.add('hidden')"></div>
+                <div class="fixed inset-0 z-10 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4">
+                        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Reject Request</h3>
+                            <p class="text-sm text-gray-600 mb-4">Optionally provide a reason for rejection.</p>
+                            <form action="{{ route('requests.group-reject', $request) }}" method="POST">
+                                @csrf
+                                <div class="mb-4">
+                                    <label for="group_rejection_remarks" class="block text-sm font-medium text-gray-700 mb-1">Reason for rejection</label>
+                                    <textarea name="rejection_remarks" id="group_rejection_remarks" rows="4"
+                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                                        placeholder="Optional — describe why this request is being rejected."></textarea>
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" onclick="document.getElementById('group-reject-modal').classList.add('hidden')"
+                                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Confirm Rejection</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
         @endif
 
         <!-- Actions for FMO Admin (pending requests) -->

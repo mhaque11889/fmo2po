@@ -2,22 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\RequirementRequest;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
 
 class ReportsController extends Controller
 {
     public function index(Request $request)
     {
-        $query = RequirementRequest::with(['creator', 'approver', 'assignee', 'assigner']);
+        // --- Base filtered query (for the All Requests tab) ---
+        $query = RequirementRequest::with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items']);
 
-        // Filter by status
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
-
-        // Filter by date range
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
         }
@@ -25,34 +29,175 @@ class ReportsController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        $requests = $query->latest()->paginate(20)->withQueryString();
+        $requests = $query
+            ->orderByRaw("FIELD(priority, 'urgent', 'normal')")
+            ->orderBy('created_at', 'desc')
+            ->paginate(20)
+            ->withQueryString();
 
+        // --- Status counts (global, ignores filters for overview cards) ---
         $counts = RequirementRequest::selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
 
         $statusCounts = [
-            'all'         => $counts->sum(),
-            'pending'     => $counts['pending'] ?? 0,
-            'approved'    => $counts['approved'] ?? 0,
-            'rejected'    => $counts['rejected'] ?? 0,
-            'assigned'    => $counts['assigned'] ?? 0,
-            'in_progress' => $counts['in_progress'] ?? 0,
-            'completed'   => $counts['completed'] ?? 0,
+            'all'                  => $counts->sum(),
+            'group_pending'        => $counts['group_pending'] ?? 0,
+            'pending'              => $counts['pending'] ?? 0,
+            'approved'             => $counts['approved'] ?? 0,
+            'rejected'             => $counts['rejected'] ?? 0,
+            'assigned'             => $counts['assigned'] ?? 0,
+            'in_progress'          => $counts['in_progress'] ?? 0,
+            'completed'            => $counts['completed'] ?? 0,
+            'cancelled'            => $counts['cancelled'] ?? 0,
+            'clarification_needed' => $counts['clarification_needed'] ?? 0,
         ];
 
-        return view('reports.index', compact('requests', 'statusCounts'));
+        // --- Priority counts ---
+        $priorityCounts = RequirementRequest::selectRaw('priority, COUNT(*) as total')
+            ->groupBy('priority')
+            ->pluck('total', 'priority');
+
+        $priorityData = [
+            'urgent' => $priorityCounts['urgent'] ?? 0,
+            'normal' => $priorityCounts['normal'] ?? 0,
+        ];
+
+        // --- Category breakdown (date-filtered, no status filter) ---
+        $catQuery = RequirementRequest::query();
+        if ($request->filled('date_from')) {
+            $catQuery->whereDate('created_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $catQuery->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        $catStatusCounts = $catQuery
+            ->select('category_id', 'status', DB::raw('COUNT(*) as total'))
+            ->groupBy('category_id', 'status')
+            ->get()
+            ->groupBy('category_id');
+
+        $categories = Category::orderBy('sort_order')->orderBy('name')->get();
+
+        $categoryStats = $categories->map(function ($cat) use ($catStatusCounts) {
+            $rows = $catStatusCounts->get($cat->id, collect());
+            $byStatus = $rows->pluck('total', 'status');
+            $total = $rows->sum('total');
+            $completed = $byStatus['completed'] ?? 0;
+            return [
+                'id'          => $cat->id,
+                'name'        => $cat->name,
+                'total'       => $total,
+                'pending'     => ($byStatus['pending'] ?? 0) + ($byStatus['group_pending'] ?? 0),
+                'approved'    => $byStatus['approved'] ?? 0,
+                'assigned'    => ($byStatus['assigned'] ?? 0) + ($byStatus['in_progress'] ?? 0),
+                'completed'   => $completed,
+                'rejected'    => ($byStatus['rejected'] ?? 0) + ($byStatus['cancelled'] ?? 0),
+                'completion_rate' => $total > 0 ? round(($completed / $total) * 100) : 0,
+            ];
+        })->filter(fn($row) => $row['total'] > 0)->values();
+
+        // --- Trend: requests per month for last 12 months ---
+        $trendBase = RequirementRequest::query();
+        if ($request->filled('date_from')) {
+            $trendBase->whereDate('created_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $trendBase->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        $trendRaw = $trendBase
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as period, COUNT(*) as total")
+            ->groupBy('period')
+            ->orderBy('period')
+            ->get()
+            ->pluck('total', 'period');
+
+        // Build 12-month labels regardless of data gaps
+        $trendLabels = [];
+        $trendValues = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $key = now()->subMonths($i)->format('Y-m');
+            $trendLabels[] = now()->subMonths($i)->format('M Y');
+            $trendValues[] = $trendRaw[$key] ?? 0;
+        }
+
+        // --- User activity ---
+        $dateFrom = $request->date_from;
+        $dateTo   = $request->date_to;
+
+        $fmoUsers = User::whereIn('role', ['fmo_user', 'fmo_admin'])
+            ->where('is_active', true)
+            ->withCount([
+                'createdRequests as submitted' => function ($q) use ($dateFrom, $dateTo) {
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+                'createdRequests as completed_count' => function ($q) use ($dateFrom, $dateTo) {
+                    $q->where('status', 'completed');
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+                'createdRequests as pending_count' => function ($q) use ($dateFrom, $dateTo) {
+                    $q->whereIn('status', ['pending', 'group_pending']);
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+                'createdRequests as rejected_count' => function ($q) use ($dateFrom, $dateTo) {
+                    $q->where('status', 'rejected');
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+            ])
+            ->orderByDesc('submitted')
+            ->get();
+
+        $poUsers = User::whereIn('role', ['po_user', 'po_admin'])
+            ->where('is_active', true)
+            ->withCount([
+                'assignedRequests as assigned_count' => function ($q) use ($dateFrom, $dateTo) {
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+                'assignedRequests as in_progress_count' => function ($q) use ($dateFrom, $dateTo) {
+                    $q->where('status', 'in_progress');
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+                'assignedRequests as completed_count' => function ($q) use ($dateFrom, $dateTo) {
+                    $q->where('status', 'completed');
+                    if ($dateFrom) $q->whereDate('created_at', '>=', $dateFrom);
+                    if ($dateTo)   $q->whereDate('created_at', '<=', $dateTo);
+                },
+            ])
+            ->orderByDesc('assigned_count')
+            ->get();
+
+        return view('reports.index', compact(
+            'requests',
+            'statusCounts',
+            'priorityData',
+            'categories',
+            'categoryStats',
+            'trendLabels',
+            'trendValues',
+            'fmoUsers',
+            'poUsers'
+        ));
     }
 
     public function export(Request $request)
     {
         $format = $request->get('format', 'csv');
 
-        $query = RequirementRequest::with(['creator', 'approver', 'assignee', 'assigner']);
+        $query = RequirementRequest::with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items']);
 
-        // Apply same filters as index
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
         }
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
@@ -80,53 +225,37 @@ class ReportsController extends Controller
         $callback = function () use ($query) {
             $file = fopen('php://output', 'w');
 
-            // Header row
             fputcsv($file, [
-                'ID',
-                'Item',
-                'Description',
-                'Dimensions',
-                'Quantity',
-                'Location',
-                'Status',
-                'Created By',
-                'Created At',
-                'Approved By',
-                'Approved At',
-                'Approval Remarks',
-                'Assigned To',
-                'Assigned By',
-                'Assigned At',
-                'Progress Remarks',
-                'Progress At',
-                'Completion Remarks',
-                'Completed At',
+                'ID', 'Priority', 'Category', 'Items', 'Total Qty', 'Location', 'Status',
+                'Created By', 'Created At', 'Approved By', 'Approved At', 'Approval Remarks',
+                'Assigned To', 'Assigned By', 'Assigned At', 'Progress Remarks', 'Progress At',
+                'Completion Remarks', 'Completed At',
             ]);
 
-            $query->with(['creator', 'approver', 'assignee', 'assigner'])
-                ->orderBy('id', 'desc')
+            $query->with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items'])
+                ->orderByRaw("FIELD(priority, 'urgent', 'normal')")->orderBy('created_at', 'desc')
                 ->chunkById(1000, function ($rows) use ($file) {
-                    foreach ($rows as $request) {
+                    foreach ($rows as $req) {
                         fputcsv($file, [
-                            $request->id,
-                            $request->item,
-                            $request->description,
-                            $request->dimensions,
-                            $request->qty,
-                            $request->location,
-                            ucfirst(str_replace('_', ' ', $request->status)),
-                            $request->creator->name ?? '',
-                            $request->created_at?->format('Y-m-d H:i:s'),
-                            $request->approver->name ?? '',
-                            $request->approved_at?->format('Y-m-d H:i:s'),
-                            $request->approval_remarks,
-                            $request->assignee->name ?? '',
-                            $request->assigner->name ?? '',
-                            $request->assigned_at?->format('Y-m-d H:i:s'),
-                            $request->progress_remarks,
-                            $request->progress_at?->format('Y-m-d H:i:s'),
-                            $request->completion_remarks,
-                            $request->completed_at?->format('Y-m-d H:i:s'),
+                            $req->id,
+                            ucfirst($req->priority),
+                            $req->category->name ?? '',
+                            $req->display_item,
+                            $req->total_qty,
+                            $req->location,
+                            ucfirst(str_replace('_', ' ', $req->status)),
+                            $req->creator->name ?? '',
+                            $req->created_at?->format('Y-m-d H:i:s'),
+                            $req->approver->name ?? '',
+                            $req->approved_at?->format('Y-m-d H:i:s'),
+                            $req->rejection_remarks,
+                            $req->assignee->name ?? '',
+                            $req->assigner->name ?? '',
+                            $req->assigned_at?->format('Y-m-d H:i:s'),
+                            $req->progress_remarks,
+                            $req->progress_at?->format('Y-m-d H:i:s'),
+                            $req->completion_remarks,
+                            $req->completed_at?->format('Y-m-d H:i:s'),
                         ]);
                     }
                 });
@@ -139,8 +268,6 @@ class ReportsController extends Controller
 
     private function exportExcel($query)
     {
-        // For Excel, we'll create a simple XML spreadsheet format
-        // This avoids requiring additional packages like PHPSpreadsheet
         $filename = 'fmo2po_reports_' . now()->format('Y-m-d_His') . '.xls';
 
         $headers = [
@@ -152,54 +279,36 @@ class ReportsController extends Controller
             echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">';
             echo '<head><meta charset="UTF-8"></head>';
             echo '<body><table border="1">';
-
-            // Header row
             echo '<tr style="background-color: #4F46E5; color: white; font-weight: bold;">';
-            echo '<th>ID</th>';
-            echo '<th>Item</th>';
-            echo '<th>Description</th>';
-            echo '<th>Dimensions</th>';
-            echo '<th>Quantity</th>';
-            echo '<th>Location</th>';
-            echo '<th>Status</th>';
-            echo '<th>Created By</th>';
-            echo '<th>Created At</th>';
-            echo '<th>Approved By</th>';
-            echo '<th>Approved At</th>';
-            echo '<th>Approval Remarks</th>';
-            echo '<th>Assigned To</th>';
-            echo '<th>Assigned By</th>';
-            echo '<th>Assigned At</th>';
-            echo '<th>Progress Remarks</th>';
-            echo '<th>Progress At</th>';
-            echo '<th>Completion Remarks</th>';
-            echo '<th>Completed At</th>';
+            foreach (['ID','Priority','Category','Items','Total Qty','Location','Status','Created By','Created At','Approved By','Approved At','Approval Remarks','Assigned To','Assigned By','Assigned At','Progress Remarks','Progress At','Completion Remarks','Completed At'] as $col) {
+                echo '<th>' . $col . '</th>';
+            }
             echo '</tr>';
 
-            $query->with(['creator', 'approver', 'assignee', 'assigner'])
-                ->orderBy('id', 'desc')
+            $query->with(['category', 'creator', 'approver', 'assignee', 'assigner', 'items'])
+                ->orderByRaw("FIELD(priority, 'urgent', 'normal')")->orderBy('created_at', 'desc')
                 ->chunkById(1000, function ($rows) {
-                    foreach ($rows as $request) {
+                    foreach ($rows as $req) {
                         echo '<tr>';
-                        echo '<td>' . htmlspecialchars($request->id) . '</td>';
-                        echo '<td>' . htmlspecialchars($request->item) . '</td>';
-                        echo '<td>' . htmlspecialchars($request->description ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->dimensions ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->qty) . '</td>';
-                        echo '<td>' . htmlspecialchars($request->location) . '</td>';
-                        echo '<td>' . htmlspecialchars(ucfirst(str_replace('_', ' ', $request->status))) . '</td>';
-                        echo '<td>' . htmlspecialchars($request->creator->name ?? '') . '</td>';
-                        echo '<td>' . ($request->created_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->approver->name ?? '') . '</td>';
-                        echo '<td>' . ($request->approved_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->approval_remarks ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->assignee->name ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->assigner->name ?? '') . '</td>';
-                        echo '<td>' . ($request->assigned_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->progress_remarks ?? '') . '</td>';
-                        echo '<td>' . ($request->progress_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
-                        echo '<td>' . htmlspecialchars($request->completion_remarks ?? '') . '</td>';
-                        echo '<td>' . ($request->completed_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . $req->id . '</td>';
+                        echo '<td style="' . ($req->priority === 'urgent' ? 'color:#dc2626;font-weight:bold;' : '') . '">' . ucfirst($req->priority) . '</td>';
+                        echo '<td>' . htmlspecialchars($req->category->name ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->display_item) . '</td>';
+                        echo '<td>' . $req->total_qty . '</td>';
+                        echo '<td>' . htmlspecialchars($req->location) . '</td>';
+                        echo '<td>' . htmlspecialchars(ucfirst(str_replace('_', ' ', $req->status))) . '</td>';
+                        echo '<td>' . htmlspecialchars($req->creator->name ?? '') . '</td>';
+                        echo '<td>' . ($req->created_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->approver->name ?? '') . '</td>';
+                        echo '<td>' . ($req->approved_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->rejection_remarks ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->assignee->name ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->assigner->name ?? '') . '</td>';
+                        echo '<td>' . ($req->assigned_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->progress_remarks ?? '') . '</td>';
+                        echo '<td>' . ($req->progress_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
+                        echo '<td>' . htmlspecialchars($req->completion_remarks ?? '') . '</td>';
+                        echo '<td>' . ($req->completed_at?->format('Y-m-d H:i:s') ?? '') . '</td>';
                         echo '</tr>';
                     }
                 });
